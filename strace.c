@@ -57,6 +57,8 @@
 #include "printsiginfo.h"
 #include "trace_event.h"
 
+#include "gdbserver.h"
+
 /* In some libc, these aren't declared. Do it ourself: */
 extern char **environ;
 extern int optind;
@@ -138,7 +140,7 @@ unsigned int show_fd_path;
 static bool detach_on_execve;
 
 static int exit_code;
-static int strace_child;
+int strace_child;
 static int strace_tracer_pid;
 
 static const char *username;
@@ -154,7 +156,7 @@ static const char *outfname;
 static FILE *shared_log;
 
 struct tcb *printing_tcp;
-static struct tcb *current_tcp;
+struct tcb *current_tcp;
 
 static struct tcb **tcbtab;
 static unsigned int nprocs;
@@ -754,7 +756,7 @@ tabto(void)
  * Otherwise, "strace -oFILE -ff -p<nonexistant_pid>"
  * may create bogus empty FILE.<nonexistant_pid>, and then die.
  */
-static void
+void
 newoutf(struct tcb *tcp)
 {
 	tcp->outf = shared_log; /* if not -ff mode, the same file is for all */
@@ -787,7 +789,7 @@ expand_tcbtab(void)
 		*tcb_ptr = newtcbs;
 }
 
-static struct tcb *
+struct tcb *
 alloctcb(int pid)
 {
 	unsigned int i;
@@ -850,7 +852,7 @@ free_tcb_priv_data(struct tcb *tcp)
 	}
 }
 
-static void
+void
 droptcb(struct tcb *tcp)
 {
 	if (tcp->pid == 0)
@@ -1697,6 +1699,7 @@ init(int argc, char *argv[])
 #endif
 	qualify("signal=all");
 	while ((c = getopt(argc, argv, "+"
+	    "G:"
 #ifdef USE_LIBUNWIND
 	    "k"
 #endif
@@ -1743,6 +1746,10 @@ init(int argc, char *argv[])
 			break;
 		case 'F':
 			optF = 1;
+			break;
+		case 'G':
+			set_tracing_backend(gdbserver_backend);
+			tracing_backend_handle_arg(c, optarg);
 			break;
 		case 'h':
 			usage();
@@ -1843,6 +1850,21 @@ init(int argc, char *argv[])
 				  "please use -f instead");
 			followfork = optF;
 		}
+	}
+
+	if (gdbserver) {
+	   if (username) {
+		   error_msg_and_die("-u and -G are mutually exclusive");
+	   }
+
+	   if (daemonized_tracer) {
+		   error_msg_and_die("-D and -G are mutually exclusive");
+	   }
+
+	   if (!followfork) {
+		   error_msg("-G is always multithreaded, implies -f");
+		   followfork = 1;
+	   }
 	}
 
 	if (followfork >= 2 && cflag) {
@@ -2022,7 +2044,7 @@ init(int argc, char *argv[])
 	tracing_backend_post_init();
 }
 
-static struct tcb *
+struct tcb *
 pid2tcb(int pid)
 {
 	unsigned int i;
@@ -2201,7 +2223,7 @@ maybe_switch_tcbs(struct tcb *tcp, const int pid)
 	return tcp;
 }
 
-static void
+void
 print_signalled(struct tcb *tcp, const int pid, int status)
 {
 	if (pid == strace_child) {
@@ -2224,7 +2246,7 @@ print_signalled(struct tcb *tcp, const int pid, int status)
 	}
 }
 
-static void
+void
 print_exited(struct tcb *tcp, const int pid, int status)
 {
 	if (pid == strace_child) {
@@ -2240,7 +2262,7 @@ print_exited(struct tcb *tcp, const int pid, int status)
 	}
 }
 
-static void
+void
 print_stopped(struct tcb *tcp, const siginfo_t *si, const unsigned int sig)
 {
 	if (cflag != CFLAG_ONLY_STATS

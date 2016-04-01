@@ -286,7 +286,7 @@ set_personality(int personality)
 # endif
 }
 
-static void
+void
 update_personality(struct tcb *tcp, unsigned int personality)
 {
 	if (personality == current_personality)
