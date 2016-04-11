@@ -1699,7 +1699,7 @@ init(int argc, char *argv[])
 #endif
 	qualify("signal=all");
 	while ((c = getopt(argc, argv, "+"
-	    "G:"
+	    "g:G:"
 #ifdef USE_LIBUNWIND
 	    "k"
 #endif
@@ -1746,6 +1746,9 @@ init(int argc, char *argv[])
 			break;
 		case 'F':
 			optF = 1;
+			break;
+		case 'g':
+			gdb_options = strdup(optarg);
 			break;
 		case 'G':
 			set_tracing_backend(gdbserver_backend);
