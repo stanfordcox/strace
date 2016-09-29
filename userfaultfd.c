@@ -30,22 +30,80 @@
 
 #include "xlat/uffd_flags.h"
 
+#include <linux/ioctl.h>
+
+#ifdef HAVE_LINUX_USERFAULTFD_H
+# include <linux/userfaultfd.h>
+#else /* !HAVE_LINUX_USERFAULTFD_H */
+# include <linux/types.h>
+
+# define _UFFDIO_REGISTER		(0x00)
+# define _UFFDIO_UNREGISTER		(0x01)
+# define _UFFDIO_WAKE			(0x02)
+# define _UFFDIO_COPY			(0x03)
+# define _UFFDIO_ZEROPAGE		(0x04)
+# define _UFFDIO_API			(0x3F)
+
+/* userfaultfd ioctl ids */
+# define UFFDIO 0xAA
+# define UFFDIO_API \
+	_IOWR(UFFDIO, _UFFDIO_API,       struct uffdio_api)
+# define UFFDIO_REGISTER \
+	_IOWR(UFFDIO, _UFFDIO_REGISTER,  struct uffdio_register)
+# define UFFDIO_UNREGISTER \
+	_IOR(UFFDIO, _UFFDIO_UNREGISTER, struct uffdio_range)
+# define UFFDIO_WAKE \
+	_IOR(UFFDIO, _UFFDIO_WAKE,       struct uffdio_range)
+# define UFFDIO_COPY \
+	_IOWR(UFFDIO, _UFFDIO_COPY,      struct uffdio_copy)
+# define UFFDIO_ZEROPAGE \
+	_IOWR(UFFDIO, _UFFDIO_ZEROPAGE,  struct uffdio_zeropage)
+
+struct uffdio_api {
+	__u64 api;
+	__u64 features;
+	__u64 ioctls;
+};
+
+struct uffdio_range {
+	__u64 start;
+	__u64 len;
+};
+
+struct uffdio_register {
+	struct uffdio_range range;
+	__u64 mode;
+	__u64 ioctls;
+};
+
+struct uffdio_copy {
+	__u64 dst;
+	__u64 src;
+	__u64 len;
+	__u64 mode;
+	__s64 copy;
+};
+
+struct uffdio_zeropage {
+	struct uffdio_range range;
+	__u64 mode;
+	__s64 zeropage;
+};
+#endif /* HAVE_LINUX_USERFAULTFD_H */
+
+#include "xlat/uffd_api_flags.h"
+#include "xlat/uffd_copy_flags.h"
+#include "xlat/uffd_register_ioctl_flags.h"
+#include "xlat/uffd_register_mode_flags.h"
+#include "xlat/uffd_zeropage_flags.h"
+
+
 SYS_FUNC(userfaultfd)
 {
 	printflags(uffd_flags, tcp->u_arg[0], "UFFD_???");
 
 	return RVAL_DECODED | RVAL_FD;
 }
-
-#ifdef HAVE_LINUX_USERFAULTFD_H
-# include <linux/ioctl.h>
-# include <linux/userfaultfd.h>
-
-# include "xlat/uffd_api_flags.h"
-# include "xlat/uffd_copy_flags.h"
-# include "xlat/uffd_register_ioctl_flags.h"
-# include "xlat/uffd_register_mode_flags.h"
-# include "xlat/uffd_zeropage_flags.h"
 
 static void
 tprintf_uffdio_range(const struct uffdio_range *range)
@@ -156,4 +214,3 @@ uffdio_ioctl(struct tcb *const tcp, const unsigned int code,
 		return RVAL_DECODED;
 	}
 }
-#endif /* HAVE_LINUX_USERFAULTFD_H */
