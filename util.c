@@ -142,6 +142,9 @@ tv_mul(struct timeval *tv, const struct timeval *a, int n)
 const char *
 xlookup(const struct xlat *xlat, const uint64_t val)
 {
+	if (xlat == NULL)
+		return NULL;
+
 	for (; xlat->str != NULL; xlat++)
 		if (xlat->val == val)
 			return xlat->str;
@@ -159,6 +162,9 @@ xlat_bsearch_compare(const void *a, const void *b)
 const char *
 xlat_search(const struct xlat *xlat, const size_t nmemb, const uint64_t val)
 {
+	if (xlat == NULL)
+		return NULL;
+
 	const struct xlat *e =
 		bsearch((const void*) &val,
 			xlat, nmemb, sizeof(*xlat), xlat_bsearch_compare);
