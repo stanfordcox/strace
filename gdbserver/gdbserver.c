@@ -1,6 +1,6 @@
 /* Implementation of strace features over the GDB remote protocol.
  *
- * Copyright (c) 2015 Red Hat Inc.
+ * Copyright (c) 2015, 2016 Red Hat Inc.
  * Copyright (c) 2015 Josh Stone <cuviper@gmail.com>
  * All rights reserved.
  *
@@ -48,6 +48,7 @@ struct tcb *current_tcp;
 int strace_child;
 
 char* gdbserver = NULL;
+static int new_thread_code = 0;
 static struct gdb_conn* gdb = NULL;
 static bool gdb_extended = false;
 static bool gdb_multiprocess = false;
@@ -86,16 +87,6 @@ struct gdb_stop_reply {
         int tid; // thread id, aka kernel tid
 };
 
-static bool
-gdb_ok()
-{
-        size_t size;
-        char *reply = gdb_recv(gdb, &size, false);
-        bool ok = size == 2 && !strcmp(reply, "OK");
-        free(reply);
-        return ok;
-}
-
 static int
 gdb_map_signal(unsigned int gdb_sig) {
         /* strace "SIG_0" vs. gdb "0" -- it's all zero */
@@ -133,7 +124,7 @@ gdb_map_signal(unsigned int gdb_sig) {
 }
 
 static void
-gdb_signal_map_init()
+gdb_signal_map_init(void)
 {
 	unsigned int pers, old_pers = current_personality;
 
@@ -264,7 +255,7 @@ gdb_recv_stop(struct gdb_stop_reply *stop_reply)
 	else 
 	    stop.reply = gdb_recv(gdb, &stop.size, true);
 
-	if  (gdb_has_non_stop(gdb) && !stop_reply) {
+	if (gdb_has_non_stop(gdb) && !stop_reply) {
 	    /* non-stop packet order:
 	       client sends: $vCont;c
 	       server sends: OK
@@ -287,22 +278,22 @@ gdb_recv_stop(struct gdb_stop_reply *stop_reply)
 		       reply = gdb_recv(gdb, &stop_size, false); /* vContc OK */
 		  }
 		  else {
-		       while (stop.reply[0] != 'T') 
+		       while (stop.reply[0] != 'T')
 			    stop.reply = gdb_recv(gdb, &stop.size, true);
 		  }
 	     }
 
-	     if (stop.reply[0] == 'T') {
-		    do {
+	}
+	if (gdb_has_non_stop(gdb) && (stop.reply[0] == 'T')) {
+		do {
 			size_t this_size;
 			gdb_send(gdb,"vStopped",8);
 			reply = gdb_recv(gdb, &this_size, true);
 			if (strcmp (reply, "OK") == 0)
-			    break;
+				break;
 			push_notification(reply, this_size);
-		    } while (true);
-	    }
-	} // gdb_has_non_stop
+		} while (true);
+	}
 
         // all good packets are at least 3 bytes
         switch (stop.size >= 3 ? stop.reply[0] : 0) {
@@ -326,8 +317,18 @@ gdb_recv_stop(struct gdb_stop_reply *stop_reply)
         return stop;
 }
 
+static bool
+gdb_ok(void)
+{
+        size_t size;
+        char *reply = gdb_recv(gdb, &size, false);
+        bool ok = size == 2 && !strcmp(reply, "OK");
+        free(reply);
+        return ok;
+}
+
 void
-gdb_init()
+gdb_init(void)
 {
         gdb_signal_map_init();
 
@@ -339,18 +340,35 @@ gdb_init()
                 gdb = gdb_begin_tcp(node, service);
         } else
                 gdb = gdb_begin_path(gdbserver);
-	
+
         if (!gdb_start_noack(gdb))
                 error_msg("couldn't enable gdb noack mode");
 
-        static const char multi_cmd[] = "qSupported:multiprocess+";
+        static char multi_cmd[] = "qSupported:multiprocess+"
+		";fork-events+;vfork-events+";
+
+	if (!followfork) {
+		/* Remove fork and vfork */
+		char *multi_cmd_semi = strchr (multi_cmd, ';');
+		*multi_cmd_semi = '\0';
+	}
+
         gdb_send(gdb, multi_cmd, sizeof(multi_cmd) - 1);
 
         size_t size;
+	bool gdb_fork;
         char *reply = gdb_recv(gdb, &size, false);
         gdb_multiprocess = strstr(reply, "multiprocess+") != NULL;
         if (!gdb_multiprocess)
                 error_msg("couldn't enable gdb multiprocess mode");
+	if (followfork) {
+		gdb_fork = strstr(reply, "fork-events+") != NULL;
+		if (!gdb_fork)
+			error_msg("couldn't enable gdb fork events handling");
+		gdb_fork = strstr(reply, "vfork-events+") != NULL;
+		if (!gdb_fork)
+			error_msg("couldn't enable gdb vfork events handling");
+	}
         free(reply);
 
         static const char extended_cmd[] = "!";
@@ -369,10 +387,30 @@ gdb_init()
 }
 
 static void
-gdb_init_syscalls()
+gdb_init_syscalls(void)
 {
-        static const char syscall_cmd[] = "QCatchSyscalls:1";
-        gdb_send(gdb, syscall_cmd, sizeof(syscall_cmd) - 1);
+	static const char syscall_cmd[] = "QCatchSyscalls:1";
+	const char *syscall_set = "";
+	bool want_syscall_set = false;
+	unsigned sci;
+
+	/* Only send syscall list if a filtered list was given with -e */
+	for (sci = 0; sci < num_quals; sci++)
+		if (! (qual_flags[sci] & QUAL_TRACE)) {
+			want_syscall_set = true;
+			break;
+		}
+
+	for (sci = 0; want_syscall_set && sci < num_quals; sci++)
+		if (qual_flags[sci] & QUAL_TRACE)
+			if (asprintf ((char**)&syscall_set, "%s;%x", syscall_set, sci) < 0)
+				error_msg("couldn't enable gdb syscall catching");
+
+	if (want_syscall_set)
+		asprintf ((char**)&syscall_set, "%s%s", syscall_cmd, syscall_set);
+	else
+		syscall_set = syscall_cmd;
+        gdb_send(gdb, syscall_set, strlen(syscall_set));
         if (!gdb_ok())
                 error_msg("couldn't enable gdb syscall catching");
 }
@@ -386,6 +424,7 @@ gdb_find_thread(int tid, bool current)
         /* Look up 'tid' in our table. */
         struct tcb *tcp = pid2tcb(tid);
         if (!tcp) {
+		new_thread_code = 1;
                 tcp = alloctcb(tid);
                 tcp->flags |= TCB_ATTACHED | TCB_STARTUP;
                 newoutf(tcp);
@@ -405,7 +444,7 @@ gdb_find_thread(int tid, bool current)
 }
 
 static void
-gdb_enumerate_threads()
+gdb_enumerate_threads(void)
 {
         // qfThreadInfo [qsThreadInfo]...
         // -> m thread
@@ -441,7 +480,7 @@ gdb_enumerate_threads()
 }
 
 void
-gdb_finalize_init()
+gdb_finalize_init(void)
 {
         // We enumerate all attached threads to be sure, especially since we
         // get all threads on vAttach, not just the one pid.
@@ -459,7 +498,7 @@ gdb_finalize_init()
 }
 
 void
-gdb_cleanup()
+gdb_cleanup(void)
 {
         if (gdb)
                 gdb_end(gdb);
@@ -537,7 +576,7 @@ gdb_startup_attach(struct tcb *tcp)
         if (!gdb_extended)
                 error_msg_and_die("gdb server doesn't support attaching processes!");
 
-        char attach_cmd[] = "vAttach;XXXXXXXX";
+        char cmd[] = "vAttach;XXXXXXXX";
         struct gdb_stop_reply stop;
 	static const char nonstop_cmd[] = "QNonStop:1";
 
@@ -545,8 +584,8 @@ gdb_startup_attach(struct tcb *tcp)
 	if (gdb_ok())
 	       gdb_set_non_stop(gdb, true);
 
-        sprintf(attach_cmd, "vAttach;%x", tcp->pid);
-        gdb_send(gdb, attach_cmd, strlen(attach_cmd));
+        sprintf(cmd, "vAttach;%x", tcp->pid);
+        gdb_send(gdb, cmd, strlen(cmd));
 
 	do {
 		/*
@@ -560,28 +599,28 @@ gdb_startup_attach(struct tcb *tcp)
 		char cmd[] = "vCont;t:pXXXXXXXX";
 		sprintf(cmd, "vCont;t:p%x.-1", tcp->pid);
 		if (!gdb_ok()) {
-                        stop.type = gdb_stop_unknown;
-                        break;
+		     stop.type = gdb_stop_unknown;
+		     break;
 		}
 		gdb_send(gdb, cmd, strlen(cmd));
 		stop = gdb_recv_stop(NULL);
 	} while (0);
-	
+
 	if (stop.type == gdb_stop_unknown) {
 		static const char nonstop_cmd[] = "QNonStop:0";
 		gdb_send(gdb, nonstop_cmd, sizeof(nonstop_cmd) - 1);
 		if (gdb_ok())
 			gdb_set_non_stop(gdb, false);
 		else
-			error_msg_and_die("gdb server doesn't support vAttach!");
-		gdb_send(gdb, attach_cmd, strlen(attach_cmd));
+			error_msg_and_die("Cannot connect to process %d: gdb server doesn't support vAttach!", tcp->pid);
+		gdb_send(gdb, cmd, strlen(cmd));
 		stop = gdb_recv_stop(NULL);
 		if (stop.size == 0)
-			error_msg_and_die("gdb server doesn't support vAttach!");
+			error_msg_and_die("Cannot connect to process %d: gdb server doesn't support vAttach!", tcp->pid);
 		switch (stop.type) {
 		case gdb_stop_error:
-			error_msg_and_die("gdb server failed vAttach with %.*s",
-					  (int)stop.size, stop.reply);
+			error_msg_and_die("Cannot connect to process %d: gdb server failed vAttach with %.*s",
+					  tcp->pid, (int)stop.size, stop.reply);
 		case gdb_stop_trap:
 			break;
 		case gdb_stop_signal:
@@ -589,8 +628,8 @@ gdb_startup_attach(struct tcb *tcp)
 				break;
 			// fallthrough
 		default:
-			error_msg_and_die("gdb server expected vAttach trap, got: %.*s",
-					  (int)stop.size, stop.reply);
+			error_msg_and_die("Cannot connect to process %d: gdb server expected vAttach trap, got: %.*s",
+					  tcp->pid, (int)stop.size, stop.reply);
 	    }
 	  }
 
@@ -637,144 +676,150 @@ gdb_detach(struct tcb *tcp)
 // The gdb connection should be ready for a stop reply on entry,
 // and we'll leave it the same way if we return true.
 bool
-gdb_trace()
+gdb_trace(void)
 {
-        struct gdb_stop_reply stop;
-        int gdb_sig = 0;
-        pid_t tid;
+	struct gdb_stop_reply stop;
+	int gdb_sig = 0;
+	pid_t tid;
+ 
+	stop = gdb_recv_stop(NULL);
+	if (new_thread_code == stop.code && stop.type == gdb_stop_syscall_return)
+		new_thread_code = 0;
+	do {
+	    if (stop.size == 0)
+                error_msg_and_die("gdb server gave an empty stop reply!?");
+            switch (stop.type) {
+                    case gdb_stop_unknown:
+                            error_msg_and_die("gdb server stop reply unknown: %.*s",
+                                            (int)stop.size, stop.reply);
+                    case gdb_stop_error:
+                            // vCont error -> no more processes
+                            free(stop.reply);
+                            return false;
+                    default:
+                            break;
+            }
 
-        stop = gdb_recv_stop(NULL);
-        do {
-                if (stop.size == 0)
-                        error_msg_and_die("gdb server gave an empty stop reply!?");
-                switch (stop.type) {
-                        case gdb_stop_unknown:
-                                error_msg_and_die("gdb server stop reply unknown: %.*s",
-                                                  (int)stop.size, stop.reply);
-                        case gdb_stop_error:
-                                // vCont error -> no more processes
-                                free(stop.reply);
-                                return false;
-                        default:
-                                break;
-                }
+	    tid = -1;
+            struct tcb *tcp = NULL;
 
-                tid = -1;
-                struct tcb *tcp = NULL;
+            if (gdb_multiprocess) {
+                    tid = stop.tid;
+                    tcp = gdb_find_thread(tid, true);
+		    if (tcp && tcp != current_tcp && new_thread_code == 1)
+			    new_thread_code = stop.code;
 
-                if (gdb_multiprocess) {
-                        tid = stop.tid;
-                        tcp = gdb_find_thread(tid, true);
+                    /* Set current output file */
+                    current_tcp = tcp;
+            } else if (current_tcp) {
+                    tcp = current_tcp;
+                    tid = tcp->pid;
+            }
+            if (tid < 0 || tcp == NULL)
+                    error_msg_and_die("couldn't read tid from stop reply: %.*s",
+                                    (int)stop.size, stop.reply);
 
-                        /* Set current output file */
-                        current_tcp = tcp;
-                } else if (current_tcp) {
-                        tcp = current_tcp;
-                        tid = tcp->pid;
-                }
+            bool exited = false;
+            switch (stop.type) {
+                    case gdb_stop_exited:
+                            print_exited(tcp, tid, W_EXITCODE(stop.code, 0));
+                            droptcb(tcp);
+                            exited = true;
+                            break;
 
-                if (tid < 0 || tcp == NULL)
-                        error_msg_and_die("couldn't read tid from stop reply: %.*s",
-                                        (int)stop.size, stop.reply);
+                    case gdb_stop_terminated:
+                            print_signalled(tcp, tid, W_EXITCODE(0,
+                                            gdb_signal_to_target(tcp, stop.code)));
+                            droptcb(tcp);
+                            exited = true;
+                            break;
 
-                bool exited = false;
-                switch (stop.type) {
-                        case gdb_stop_exited:
-                                print_exited(tcp, tid, W_EXITCODE(stop.code, 0));
-                                droptcb(tcp);
-                                exited = true;
-                                break;
+                    default:
+                            break;
+            }
 
-                        case gdb_stop_terminated:
-                                print_signalled(tcp, tid, W_EXITCODE(0,
-                                                gdb_signal_to_target(tcp, stop.code)));
-                                droptcb(tcp);
-                                exited = true;
-                                break;
+            if (exited && !gdb_multiprocess) {
+                    free(stop.reply);
+                    return false;
+            }
 
-                        default:
-                                break;
-                }
+            get_regs(tid);
 
-                if (exited && !gdb_multiprocess) {
-                        free(stop.reply);
-                        return false;
-                }
+            // TODO need code equivalent to PTRACE_EVENT_EXEC?
 
-                get_regs(tid);
+            /* Is this the very first time we see this tracee stopped? */
+            if (tcp->flags & TCB_STARTUP) {
+                    tcp->flags &= ~TCB_STARTUP;
+                    if (get_scno(tcp) == 1)
+                            tcp->s_prev_ent = tcp->s_ent;
+            }
 
-                // TODO need code equivalent to PTRACE_EVENT_EXEC?
+            // TODO cflag means we need to update tcp->dtime/stime
+            // usually through wait rusage, but how can we do it?
 
-                /* Is this the very first time we see this tracee stopped? */
-                if (tcp->flags & TCB_STARTUP) {
-                        tcp->flags &= ~TCB_STARTUP;
-                        if (get_scno(tcp) == 1)
-                                tcp->s_prev_ent = tcp->s_ent;
-                }
+            switch (stop.type) {
+                    case gdb_stop_unknown:
+                    case gdb_stop_error:
+                    case gdb_stop_exited:
+                    case gdb_stop_terminated:
+                            // already handled above
+                            break;
 
-                // TODO cflag means we need to update tcp->dtime/stime
-                // usually through wait rusage, but how can we do it?
+                    case gdb_stop_trap:
+                            // misc trap, nothing to do...
+                            break;
 
-                switch (stop.type) {
-                        case gdb_stop_unknown:
-                        case gdb_stop_error:
-                        case gdb_stop_exited:
-                        case gdb_stop_terminated:
-                                // already handled above
-                                break;
+                    case gdb_stop_syscall_entry:
+                            // If we thought we were already in a syscall -- missed
+                            // a return? -- skipping this report doesn't do much
+                            // good.  Might as well force it to be a new entry
+                            // regardless to sync up.
+                            tcp->flags &= ~TCB_INSYSCALL;
+                            tcp->scno = stop.code;
+                            trace_syscall(tcp);
+                            break;
 
-                        case gdb_stop_trap:
-                                // misc trap, nothing to do...
-                                break;
+                    case gdb_stop_syscall_return:
+                            // If we missed the entry, recording a return will only
+                            // confuse things, so let's just report the good ones.
+                            if (exiting(tcp)) {
+                                    tcp->scno = stop.code;
+                                    trace_syscall(tcp);
+                            }
+                            break;
 
-                        case gdb_stop_syscall_entry:
-                                // If we thought we were already in a syscall -- missed
-                                // a return? -- skipping this report doesn't do much
-                                // good.  Might as well force it to be a new entry
-                                // regardless to sync up.
-                                tcp->flags &= ~TCB_INSYSCALL;
-                                tcp->scno = stop.code;
-                                trace_syscall(tcp);
-                                break;
+                    case gdb_stop_signal:
+                            {
+                                    siginfo_t *si = NULL;
+                                    size_t siginfo_size;
+                                    char *siginfo_reply =
+                                            gdb_xfer_read(gdb, "siginfo", "", &siginfo_size);
+                                    if (siginfo_reply && siginfo_size == sizeof(siginfo_t))
+                                            si = (siginfo_t *) siginfo_reply;
 
-                        case gdb_stop_syscall_return:
-                                // If we missed the entry, recording a return will only
-                                // confuse things, so let's just report the good ones.
-                                if (exiting(tcp)) {
-                                        tcp->scno = stop.code;
-                                        trace_syscall(tcp);
-                                }
-                                break;
+                                    // XXX gdbserver returns "native" siginfo of 32/64-bit target
+                                    // but strace expects its own format as PTRACE_GETSIGINFO
+                                    // would have given it.
+                                    // (i.e. need to reverse siginfo_fixup)
+                                    // ((i.e. siginfo_from_compat_siginfo))
 
-                        case gdb_stop_signal:
-                                {
-                                        siginfo_t *si = NULL;
-                                        size_t siginfo_size;
-                                        char *siginfo_reply =
-                                                gdb_xfer_read(gdb, "siginfo", "", &siginfo_size);
-                                        if (siginfo_reply && siginfo_size == sizeof(siginfo_t))
-                                                si = (siginfo_t *) siginfo_reply;
+                                    gdb_sig = stop.code;
+                                    print_stopped(tcp, si, gdb_signal_to_target(tcp, gdb_sig));
+                                    free(siginfo_reply);
+                            }
+                            break;
+            }
 
-                                        // XXX gdbserver returns "native" siginfo of 32/64-bit target
-                                        // but strace expects its own format as PTRACE_GETSIGINFO
-                                        // would have given it.
-                                        // (i.e. need to reverse siginfo_fixup)
-                                        // ((i.e. siginfo_from_compat_siginfo))
+	    if (tcp->s_ent && strcmp(tcp->s_ent->sys_name,"exit") == 0)
+		    new_thread_code = stop.code;
+	    free(stop.reply);
+	    stop.reply = pop_notification(&stop.size);
+	    if (stop.reply)	// cached out of order notification?
+	         stop = gdb_recv_stop(&stop);
+	    else
+	         break;
+	    } while (true);
 
-                                        gdb_sig = stop.code;
-                                        print_stopped(tcp, si, gdb_signal_to_target(tcp, gdb_sig));
-                                        free(siginfo_reply);
-                                }
-                                break;
-                }
-
-                free(stop.reply);
-                stop.reply = pop_notification(&stop.size);
-                if (stop.reply) // cached out of order notification?
-                        stop = gdb_recv_stop(&stop);
-                else
-                        break;
-        } while (true);
 
         if (gdb_sig) {
                 if (gdb_vcont) {
@@ -791,10 +836,18 @@ gdb_trace()
         } else {
                 // just continue everyone
                 if (gdb_vcont) {
-                        static const char cmd[] = "vCont;c";
+			// Treating this as $vCont;c:pid.tid for non-stop
+			// when multiple threads begin, focuses on the first
+			// thread we catch and the others will be stopped
+			char cmd[] = "vCont;c:xxxxxxxx.xxxxxxxx";
+			if (gdb_has_non_stop (gdb) && stop.pid != stop.tid
+			    && !new_thread_code)
+				sprintf(cmd, "vCont;c:p%x.%x", stop.pid, stop.tid);
+			else
+				sprintf(cmd, "vCont;c");
                         gdb_send(gdb, cmd, sizeof(cmd) - 1);
-                } else {
-                        static const char cmd[] = "c";
+		} else {
+			static const char cmd[] = "c";
                         gdb_send(gdb, cmd, sizeof(cmd) - 1);
                 }
         }
