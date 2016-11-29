@@ -48,7 +48,6 @@ struct tcb *current_tcp;
 int strace_child;
 
 char* gdbserver = NULL;
-static int new_thread_code = 0;
 static struct gdb_conn* gdb = NULL;
 static bool gdb_extended = false;
 static bool gdb_multiprocess = false;
@@ -424,8 +423,10 @@ gdb_find_thread(int tid, bool current)
         /* Look up 'tid' in our table. */
         struct tcb *tcp = pid2tcb(tid);
         if (!tcp) {
-		new_thread_code = 1;
                 tcp = alloctcb(tid);
+		tcp->gdb_cont_pid_tid = -1; // Look for matching syscall return
+		if (debug_flag)
+			printf ("xxx set %d to 1", tid);
                 tcp->flags |= TCB_ATTACHED | TCB_STARTUP;
                 newoutf(tcp);
 
@@ -681,10 +682,9 @@ gdb_trace(void)
 	struct gdb_stop_reply stop;
 	int gdb_sig = 0;
 	pid_t tid;
- 
+	struct tcb *tcp = NULL;
+
 	stop = gdb_recv_stop(NULL);
-	if (new_thread_code == stop.code && stop.type == gdb_stop_syscall_return)
-		new_thread_code = 0;
 	do {
 	    if (stop.size == 0)
                 error_msg_and_die("gdb server gave an empty stop reply!?");
@@ -701,13 +701,17 @@ gdb_trace(void)
             }
 
 	    tid = -1;
-            struct tcb *tcp = NULL;
+            tcp = NULL;
 
             if (gdb_multiprocess) {
                     tid = stop.tid;
                     tcp = gdb_find_thread(tid, true);
-		    if (tcp && tcp != current_tcp && new_thread_code == 1)
-			    new_thread_code = stop.code;
+		    if (tcp && tcp->gdb_cont_pid_tid == stop.code
+			    && stop.type == gdb_stop_syscall_return)
+			    tcp->gdb_cont_pid_tid = true;
+		    else if (tcp && tcp != current_tcp
+			    && tcp->gdb_cont_pid_tid == -1)
+			    tcp->gdb_cont_pid_tid = stop.code;
 
                     /* Set current output file */
                     current_tcp = tcp;
@@ -811,7 +815,7 @@ gdb_trace(void)
             }
 
 	    if (tcp->s_ent && strcmp(tcp->s_ent->sys_name,"exit") == 0)
-		    new_thread_code = stop.code;
+		    tcp->gdb_cont_pid_tid = stop.code;
 	    free(stop.reply);
 	    stop.reply = pop_notification(&stop.size);
 	    if (stop.reply)	// cached out of order notification?
@@ -841,7 +845,7 @@ gdb_trace(void)
 			// thread we catch and the others will be stopped
 			char cmd[] = "vCont;c:xxxxxxxx.xxxxxxxx";
 			if (gdb_has_non_stop (gdb) && stop.pid != stop.tid
-			    && !new_thread_code)
+			    && tcp->gdb_cont_pid_tid == true)
 				sprintf(cmd, "vCont;c:p%x.%x", stop.pid, stop.tid);
 			else
 				sprintf(cmd, "vCont;c");

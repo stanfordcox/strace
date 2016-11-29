@@ -220,6 +220,7 @@ struct tcb {
 	unsigned int mmap_cache_generation;
 	struct queue_t *queue;
 #endif
+	int gdb_cont_pid_tid;	/* continue gdbserver with vContc;c:ppid.tid  */
 };
 
 /* TCB flags */
