@@ -222,7 +222,7 @@ gen_header()
 				cond_xlat "${line}"
 			fi
 			;;
-		[0-9]*)	# numeric constants
+		[-0-9]*)	# numeric constants
 			print_xlat "${line}"
 			;;
 		*)	# verbatim lines
