@@ -39,6 +39,7 @@
 #include "xlat/pr_mce_kill.h"
 #include "xlat/pr_mce_kill_policy.h"
 #include "xlat/pr_set_mm.h"
+#include "xlat/pr_set_vma.h"
 #include "xlat/pr_tsc.h"
 #include "xlat/pr_unalign_flags.h"
 
@@ -78,14 +79,8 @@ SYS_FUNC(prctl)
 	const unsigned int option = tcp->u_arg[0];
 	const kernel_ulong_t arg2 = tcp->u_arg[1];
 	const kernel_ulong_t arg3 = tcp->u_arg[2];
-	/*
-	 * PR_SET_VMA is the only command which actually uses these arguments
-	 * currently, and it is available only on Android for now.
-	 */
-#ifdef __ANDROID__
 	const kernel_ulong_t arg4 = tcp->u_arg[3];
 	const kernel_ulong_t arg5 = tcp->u_arg[4];
-#endif
 	unsigned int i;
 
 	if (entering(tcp))
@@ -244,22 +239,24 @@ SYS_FUNC(prctl)
 			    QUOTE_0_TERMINATED);
 		return RVAL_DECODED;
 
-#ifdef __ANDROID__
-# ifndef PR_SET_VMA_ANON_NAME
-#  define PR_SET_VMA_ANON_NAME    0
-# endif
 	case PR_SET_VMA:
-		if (arg2 == PR_SET_VMA_ANON_NAME) {
-			tprintf(", PR_SET_VMA_ANON_NAME, %#" PRI_klx, arg3);
+		tprints(", ");
+		printxval(pr_set_vma, arg2, "PR_SET_VMA_???");
+
+		switch (arg2) {
+		case PR_SET_VMA_ANON_NAME:
+			tprintf(", %#" PRI_klx, arg3);
 			tprintf(", %" PRI_klu ", ", arg4);
 			printstr(tcp, arg5);
-		} else {
+			break;
+
+		default:
 			/* There are no other sub-options now, but there
 			 * might be in future... */
 			print_prctl_args(tcp, 1);
 		}
+
 		return RVAL_DECODED;
-#endif
 
 	case PR_SET_MM:
 		tprints(", ");
