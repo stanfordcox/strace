@@ -1000,9 +1000,9 @@ dumpiov_upto(struct tcb *const tcp, const int len, const kernel_ulong_t addr,
 }
 
 void
-dumpstr(struct tcb *const tcp, const kernel_ulong_t addr, const int len)
+dumpstr(struct tcb *tcp, const kernel_ulong_t addr, const kernel_ulong_t len)
 {
-	static int strsize = -1;
+	static kernel_ulong_t strsize = 0;
 	static unsigned char *str;
 
 	char outbuf[
@@ -1013,15 +1013,20 @@ dumpstr(struct tcb *const tcp, const kernel_ulong_t addr, const int len)
 		/*align to 8 to make memset easier:*/ + 7) & -8
 	];
 	const unsigned char *src;
-	int i;
+	kernel_ulong_t i;
 
 	memset(outbuf, ' ', sizeof(outbuf));
+
+	if ((len + 16) < len) {
+		error_msg("Out of memory");
+		return;
+	}
 
 	if (strsize < len + 16) {
 		free(str);
 		str = malloc(len + 16);
 		if (!str) {
-			strsize = -1;
+			strsize = 0;
 			error_msg("Out of memory");
 			return;
 		}
@@ -1067,7 +1072,7 @@ dumpstr(struct tcb *const tcp, const kernel_ulong_t addr, const int len)
 			src++;
 		} while (++i & 0xf);
 		*dst = '\0';
-		tprintf(" | %05x  %s |\n", i - 16, outbuf);
+		tprintf(" | %05lx  %s |\n", i - 16, outbuf);
 	}
 }
 
