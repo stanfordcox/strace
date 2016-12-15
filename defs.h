@@ -511,8 +511,8 @@ extern int next_set_bit(const void *bit_array, unsigned cur_bit, unsigned size_b
 #define QUOTE_OMIT_TRAILING_0                   0x08
 #define QUOTE_FORCE_HEX                         0x10
 
-extern int string_quote(const char *, char *, unsigned int, unsigned int);
-extern int print_quoted_string(const char *, unsigned int, unsigned int);
+extern int string_quote(const char *, char *, unsigned long, unsigned int);
+extern int print_quoted_string(const char *, unsigned long, unsigned int);
 
 /* a refers to the lower numbered u_arg,
  * b refers to the higher numbered u_arg

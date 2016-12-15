@@ -646,12 +646,12 @@ printfd(struct tcb *tcp, int fd)
  * Note that if QUOTE_0_TERMINATED is not set, always returns 1.
  */
 int
-string_quote(const char *instr, char *outstr, const unsigned int size,
+string_quote(const char *instr, char *outstr, const unsigned long size,
 	     const unsigned int style)
 {
 	const unsigned char *ustr = (const unsigned char *) instr;
 	char *s = outstr;
-	unsigned int i;
+	unsigned long i;
 	int usehex, c, eol;
 
 	if (style & QUOTE_0_TERMINATED)
@@ -804,12 +804,12 @@ string_quote(const char *instr, char *outstr, const unsigned int size,
  * Note that if QUOTE_0_TERMINATED is not set, always returns 1.
  */
 int
-print_quoted_string(const char *str, unsigned int size,
+print_quoted_string(const char *str, unsigned long size,
 		    const unsigned int style)
 {
 	char *buf;
 	char *outstr;
-	unsigned int alloc_size;
+	unsigned long alloc_size;
 	int rc;
 
 	if (size && style & QUOTE_0_TERMINATED)
