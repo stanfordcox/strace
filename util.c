@@ -1124,12 +1124,12 @@ vm_read_mem(const pid_t pid, void *const laddr,
  * at address `addr' to our space at `our_addr'
  */
 int
-umoven(struct tcb *const tcp, kernel_ulong_t addr, unsigned int len,
+umoven(struct tcb *const tcp, kernel_ulong_t addr, kernel_ulong_t len,
        void *const our_addr)
 {
 	char *laddr = our_addr;
 	int pid = tcp->pid;
-	unsigned int n, m, nread;
+	unsigned long n, m, nread;
 	union {
 		long val;
 		char x[sizeof(long)];
@@ -1140,15 +1140,19 @@ umoven(struct tcb *const tcp, kernel_ulong_t addr, unsigned int len,
 	    && (addr & (~ (kernel_ulong_t) -1U))) {
 		return -1;
 	}
+
+	if ((current_wordsize < sizeof(kernel_ulong_t)) &&
+	    (len >= (1ULL << (current_wordsize * 8))))
+		return -1;
 #endif
 
 	if (!process_vm_readv_not_supported) {
-		int r = vm_read_mem(pid, laddr, addr, len);
-		if ((unsigned int) r == len)
+		ssize_t r = vm_read_mem(pid, laddr, addr, len);
+		if ((r >= 0) && ((unsigned long) r == len))
 			return 0;
 		if (r >= 0) {
-			error_msg("umoven: short read (%u < %u) @0x%" PRI_klx,
-				  (unsigned int) r, len, addr);
+			error_msg("umoven: short read (%lu < %lu) @0x%" PRI_klx,
+				  (unsigned long) r, (unsigned long) len, addr);
 			return -1;
 		}
 		switch (errno) {
@@ -1212,8 +1216,11 @@ umoven(struct tcb *const tcp, kernel_ulong_t addr, unsigned int len,
 			case EFAULT: case EIO: case EPERM:
 				/* address space is inaccessible */
 				if (nread) {
-					perror_msg("umoven: short read (%u < %u) @0x%" PRI_klx,
-						   nread, nread + len, addr - nread);
+					perror_msg("umoven: short read "
+						   "(%lu < %lu) @0x%" PRI_klx,
+						   nread,
+						   nread + (unsigned long) len,
+						   addr - nread);
 				}
 				return -1;
 			default:
@@ -1235,7 +1242,7 @@ umoven(struct tcb *const tcp, kernel_ulong_t addr, unsigned int len,
 
 int
 umoven_or_printaddr(struct tcb *const tcp, const kernel_ulong_t addr,
-		    const unsigned int len, void *const our_addr)
+		    const kernel_ulong_t len, void *const our_addr)
 {
 	if (!addr || !verbose(tcp) || (exiting(tcp) && syserror(tcp)) ||
 	    umoven(tcp, addr, len, our_addr) < 0) {
@@ -1248,7 +1255,7 @@ umoven_or_printaddr(struct tcb *const tcp, const kernel_ulong_t addr,
 int
 umoven_or_printaddr_ignore_syserror(struct tcb *const tcp,
 				    const kernel_ulong_t addr,
-				    const unsigned int len,
+				    const kernel_ulong_t len,
 				    void *const our_addr)
 {
 	if (!addr || !verbose(tcp) || umoven(tcp, addr, len, our_addr) < 0) {
@@ -1271,13 +1278,14 @@ umoven_or_printaddr_ignore_syserror(struct tcb *const tcp,
  * we never write past laddr[len-1]).
  */
 int
-umovestr(struct tcb *const tcp, kernel_ulong_t addr, unsigned int len, char *laddr)
+umovestr(struct tcb *const tcp, kernel_ulong_t addr, kernel_ulong_t len,
+	 char *laddr)
 {
 	const unsigned long x01010101 = (unsigned long) 0x0101010101010101ULL;
 	const unsigned long x80808080 = (unsigned long) 0x8080808080808080ULL;
 
 	int pid = tcp->pid;
-	unsigned int n, m, nread;
+	unsigned long n, m, nread;
 	union {
 		unsigned long val;
 		char x[sizeof(long)];
@@ -1296,8 +1304,8 @@ umovestr(struct tcb *const tcp, kernel_ulong_t addr, unsigned int len, char *lad
 		const size_t page_mask = page_size - 1;
 
 		while (len > 0) {
-			unsigned int chunk_len;
-			unsigned int end_in_page;
+			unsigned long chunk_len;
+			unsigned long end_in_page;
 
 			/*
 			 * Don't cross pages, otherwise we can get EFAULT
@@ -1309,7 +1317,7 @@ umovestr(struct tcb *const tcp, kernel_ulong_t addr, unsigned int len, char *lad
 			if (chunk_len > end_in_page) /* crosses to the next page */
 				chunk_len -= end_in_page;
 
-			int r = vm_read_mem(pid, laddr, addr, chunk_len);
+			ssize_t r = vm_read_mem(pid, laddr, addr, chunk_len);
 			if (r > 0) {
 				if (memchr(laddr, '\0', r))
 					return 1;
@@ -1334,8 +1342,12 @@ umovestr(struct tcb *const tcp, kernel_ulong_t addr, unsigned int len, char *lad
 				case EFAULT: case EIO:
 					/* address space is inaccessible */
 					if (nread) {
-						perror_msg("umovestr: short read (%d < %d) @0x%" PRI_klx,
-							   nread, nread + len, addr - nread);
+						perror_msg("umovestr: short "
+							   "read (%lu < "
+							   "%" PRI_klu ") "
+							   "@0x%" PRI_klx,
+							   nread, nread + len,
+							   addr - nread);
 					}
 					return -1;
 				default:
@@ -1392,8 +1404,11 @@ umovestr(struct tcb *const tcp, kernel_ulong_t addr, unsigned int len, char *lad
 			case EFAULT: case EIO: case EPERM:
 				/* address space is inaccessible */
 				if (nread) {
-					perror_msg("umovestr: short read (%d < %d) @0x%" PRI_klx,
-						   nread, nread + len, addr - nread);
+					perror_msg("umovestr: short read "
+						   "(%lu < %" PRI_klu " "
+						   "@0x%" PRI_klx,
+						   nread, nread + len,
+						   addr - nread);
 				}
 				return -1;
 			default:
@@ -1457,7 +1472,7 @@ print_array(struct tcb *const tcp,
 	    const size_t elem_size,
 	    int (*const umoven_func)(struct tcb *,
 				     kernel_ulong_t,
-				     unsigned int,
+				     kernel_ulong_t,
 				     void *),
 	    bool (*const print_func)(struct tcb *,
 				     void *elem_buf,
