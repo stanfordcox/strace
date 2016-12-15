@@ -1,0 +1,30 @@
+/* 2.1.101 */
+FS_NRINODE	1	/* int:current number of allocated inodes */
+FS_STATINODE	2
+FS_MAXINODE	3	/* int:maximum number of inodes that can be allocated */
+FS_NRDQUOT	4	/* int:current number of allocated dquots */
+FS_MAXDQUOT	5	/* int:maximum number of dquots that can be allocated */
+FS_NRFILE	6	/* int:current number of allocated filedescriptors */
+FS_MAXFILE	7	/* int:maximum number of filedescriptors that can be allocated */
+FS_DENTRY	8
+/* 2.1.117pre1 */
+FS_NRSUPER	9	/* int:current number of allocated super_blocks */
+FS_MAXSUPER	10	/* int:maximum number of super_blocks that can be allocated */
+/* 2.3.39 */
+FS_OVERFLOWUID	11	/* int: overflow UID */
+FS_OVERFLOWGID	12	/* int: overflow GID */
+/* 2.4.0-test9pre6 */
+FS_LEASES	13	/* int: leases enabled */
+FS_DIR_NOTIFY	14	/* int: directory notification enabled */
+FS_LEASE_TIME	15	/* int: maximum time to wait for a lease break */
+/* 2.5.18, 17eb4a37 */
+FS_DQSTATS	16	/* disc quota usage statistics and control */
+/* 2.5.36, ef5cc2fd */
+FS_XFS		17	/* struct: control xfs parameters */
+/* 2.6.4-rc2, 98fabcaa */
+FS_AIO_NR	18	/* current system-wide number of aio requests */
+FS_AIO_MAX_NR	19	/* system-wide maximum number of aio requests */
+/* 2.6.13-rc4, 0399cb08 */
+FS_INOTIFY	20	/* inotify submenu */
+/* 2.6.21-rc1, 0e03036c, was KERN_OCFS2 before 0e03036c, defined internally in fs/ocfs2/cluster/nodemanager.h */
+FS_OCFS2	988	/* ocfs2 */

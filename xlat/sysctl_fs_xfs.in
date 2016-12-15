@@ -1,0 +1,45 @@
+/* Defined in fs/xfs/xfs_sysctl.h */
+
+/* 2.5.36, ef5cc2fd, removed in 2.5.47, 262d0d38 */
+XFS_REFCACHE_SIZE	1
+XFS_REFCACHE_PURGE	2
+/* 2.5.43, 0e4c68e4, was 4 before 2.5.47, 262d0d38, was 2 before 2.5.74, ef094721, was 1 before 2.6.0-test8, 57b6451f, removed in 2.6.30, e0b8e8b6 */
+XFS_RESTRICT_CHOWN	3
+/* 0e4c68e4, was 5 before 2.5.47, 262d0d38, was 3 before 2.5.74, ef094721, was 2 before 2.6.0-test8, 57b6451f */
+XFS_SGID_INHERIT	4
+/* 0e4c68e4, was 6 before 2.5.47, 262d0d38, was 4 before 2.5.74, ef094721, was 3 before 2.6.0-test8, 57b6451f */
+XFS_SYMLINK_MODE	5
+/* 2.5.52, ccbc432a */
+/* was 5 before 2.5.74, ef094721, was 4 before 2.6.0-test8, 57b6451f */
+XFS_PANIC_MASK		6
+/* 2.5.67, e268988e, was 6 before 2.5.74, ef094721, was 5 before 2.6.0-test8, 57b6451f */
+XFS_ERRLEVEL		7
+/* 2.5.71, b2677e18, was 7 before 2.5.74, ef094721, was 6 before 2.6.0-test8, 57b6451f, was XFS_SYNC_INTERVAL before 1f2a36f1 */
+XFS_SYNCD_TIMER		8
+/* removed in 2.6.7-rc2, 1f2a36f1 */
+XFS_PROBE_DMAPI		9
+/* removed in 2.6.7-rc2, 1f2a36f1 */
+XFS_PROBE_IOOPS		10
+/* removed in 2.6.7-rc2, 1f2a36f1 */
+XFS_PROBE_QUOTA		11
+/* ef5cc2fd, was 3 before 262d0d38, was 1 before ef094721, was 7 before 57b6451f */
+XFS_STATS_CLEAR		12
+/* 57b6451f */
+XFS_INHERIT_SYNC	13
+/* 57b6451f */
+XFS_INHERIT_NODUMP	14
+/* 0af1998d */
+XFS_INHERIT_NOATIME	15
+/* 55e585b4, was XFS_FLUSH_INTERVAL before 1f2a36f1 */
+XFS_BUF_TIMER		16
+/* 55e585b4, was XFS_AGE_BUFFER before 1f2a36f1 */
+XFS_BUF_AGE		17
+XFS_IO_BYPASS		18
+/* 2f1bf6ba */
+XFS_INHERIT_NOSYM	19
+/* 622db1ad */
+XFS_ROTORSTEP		20
+/* d3446eac */
+XFS_INHERIT_NODFRG	21
+/* 2a82b8be */
+XFS_FILESTREAM_TIMER	22

@@ -1,0 +1,2 @@
+/* 2.2.7pre4, was BUS_ISA before 2.5.27, c59ccd5f */
+CTL_BUS_ISA	1 /* ISA */

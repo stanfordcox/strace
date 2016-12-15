@@ -1,0 +1,14 @@
+/* 2.1.70 */
+DEV_CDROM	1
+/* 2.1.117pre1 */
+DEV_HWMON	2
+/* 2.3.6pre1 */
+DEV_PARPORT	3
+/* 2.3.99pre8 */
+DEV_RAID	4
+/* 2.4.0-test9pre2 */
+DEV_MAC_HID	5
+/* 2.6.0-test5, 8bd14260 */
+DEV_SCSI	6
+/* 2.6.14-rc1, 8c702e16 */
+DEV_IPMI	7

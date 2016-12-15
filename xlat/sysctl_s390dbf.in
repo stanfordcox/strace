@@ -1,0 +1,5 @@
+/* Defined in arch/s390/kernel/debug.c */
+
+/* v2.6.11, 464f3583 */
+CTL_S390DBF_STOPPABLE	5678
+CTL_S390DBF_ACTIVE	5679
