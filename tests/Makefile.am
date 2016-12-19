@@ -189,6 +189,7 @@ check_PROGRAMS = \
 	ioctl_scsi \
 	ioctl_sg_io_v3 \
 	ioctl_sg_io_v4 \
+	ioctl_sock \
 	ioctl_sock_gifconf \
 	ioctl_uffdio \
 	ioctl_v4l2 \
@@ -597,6 +598,7 @@ DECODER_TESTS = \
 	ioctl_scsi.test \
 	ioctl_sg_io_v3.test \
 	ioctl_sg_io_v4.test \
+	ioctl_sock.test \
 	ioctl_sock_gifconf.test \
 	ioctl_uffdio.test \
 	ioctl_v4l2.test \
