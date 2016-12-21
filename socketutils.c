@@ -205,7 +205,7 @@ receive_responses(const int fd, const unsigned long inode,
 			.msg_iovlen = 1
 		};
 
-		ssize_t ret = recvmsg(fd, &msg, flags);
+		long long ret = recvmsg(fd, &msg, flags);
 		if (ret < 0) {
 			if (errno == EINTR)
 				continue;

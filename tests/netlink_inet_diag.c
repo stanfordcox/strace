@@ -94,7 +94,7 @@ check_responses(const int fd)
 		.msg_iovlen = 1
 	};
 
-	ssize_t ret = recvmsg(fd, &msg, 0);
+	long long ret = recvmsg(fd, &msg, 0);
 	if (ret <= 0)
 		perror_msg_and_skip("recvmsg");
 
