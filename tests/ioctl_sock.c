@@ -207,7 +207,8 @@ main(void)
 	memset(ifr->ifr_name, 'A', sizeof(ifr->ifr_name));
 
 	ioctl(-1, SIOCGIFCONF, ifc);
-	printf("ioctl(-1, SIOCGIFCONF, {%d}) = -1 EBADF (%m)\n", ifc->ifc_len);
+	printf("ioctl(-1, SIOCGIFCONF, {ifc_len=%d, ifc_buf=%p}) = "
+	       "-1 EBADF (%m)\n", ifc->ifc_len, ifc->ifc_buf);
 
 #ifdef SIOCBRADDBR
 	ioctl(-1, SIOCBRADDBR, brname);
