@@ -220,7 +220,6 @@ struct tcb {
 	unsigned int mmap_cache_generation;
 	struct queue_t *queue;
 #endif
-	int gdb_cont_pid_tid;	/* continue gdbserver with vContc;c:ppid.tid  */
 };
 
 /* TCB flags */
@@ -247,6 +246,7 @@ struct tcb {
 #define TCB_SKIP_DETACH_ON_FIRST_EXEC	0x100	/* -b execve should skip detach on first execve */
 #define TCB_GRABBED	0x200 /* We grab the process and can catch it
 			       * in the middle of a syscall */
+#define TCB_GDB_CONT_PID_TID 0x400 /* Use vCont;c:pPID.TID for for gdb backend */
 
 /* qualifier flags */
 #define QUAL_TRACE	0x001	/* this system call should be traced */

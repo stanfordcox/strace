@@ -84,6 +84,8 @@ struct gdb_stop_reply {
         int code; // error, signal, exit status, scno
         int pid; // process id, aka kernel tgid
         int tid; // thread id, aka kernel tid
+        int general_pid; // process id that gdbserver is focused on
+        int general_tid; // thread id that gdbserver is focused on
 };
 
 static int
@@ -194,7 +196,15 @@ gdb_recv_signal(struct gdb_stop_reply *stop)
                         continue;
 
                 if (!strcmp(n, "thread")) {
-                        gdb_parse_thread(r, &stop->pid, &stop->tid);
+			if (stop->pid == -1) {
+				gdb_parse_thread(r, &stop->pid, &stop->tid);
+				stop->general_pid = stop->pid;
+				stop->general_tid = stop->tid;
+			}
+			else
+				// an optional 2nd thread component is the
+				// thread that gdbserver is focused on
+				gdb_parse_thread(r, &stop->general_pid, &stop->general_tid);
                 }
                 else if (!strcmp(n, "syscall_entry")) {
                         if (stop->type == gdb_stop_trap) {
@@ -251,7 +261,7 @@ gdb_recv_stop(struct gdb_stop_reply *stop_reply)
 	if (stop_reply)
 	    // pop_notification gave us a cached notification
 	    stop = *stop_reply;
-	else 
+	else
 	    stop.reply = gdb_recv(gdb, &stop.size, true);
 
 	if (gdb_has_non_stop(gdb) && !stop_reply) {
@@ -424,9 +434,7 @@ gdb_find_thread(int tid, bool current)
         struct tcb *tcp = pid2tcb(tid);
         if (!tcp) {
                 tcp = alloctcb(tid);
-		tcp->gdb_cont_pid_tid = -1; // Look for matching syscall return
-		if (debug_flag)
-			printf ("xxx set %d to 1", tid);
+		tcp->flags |= TCB_GDB_CONT_PID_TID;
                 tcp->flags |= TCB_ATTACHED | TCB_STARTUP;
                 newoutf(tcp);
 
@@ -706,13 +714,6 @@ gdb_trace(void)
             if (gdb_multiprocess) {
                     tid = stop.tid;
                     tcp = gdb_find_thread(tid, true);
-		    if (tcp && tcp->gdb_cont_pid_tid == stop.code
-			    && stop.type == gdb_stop_syscall_return)
-			    tcp->gdb_cont_pid_tid = true;
-		    else if (tcp && tcp != current_tcp
-			    && tcp->gdb_cont_pid_tid == -1)
-			    tcp->gdb_cont_pid_tid = stop.code;
-
                     /* Set current output file */
                     current_tcp = tcp;
             } else if (current_tcp) {
@@ -814,8 +815,6 @@ gdb_trace(void)
                             break;
             }
 
-	    if (tcp->s_ent && strcmp(tcp->s_ent->sys_name,"exit") == 0)
-		    tcp->gdb_cont_pid_tid = stop.code;
 	    free(stop.reply);
 	    stop.reply = pop_notification(&stop.size);
 	    if (stop.reply)	// cached out of order notification?
@@ -840,13 +839,13 @@ gdb_trace(void)
         } else {
                 // just continue everyone
                 if (gdb_vcont) {
-			// Treating this as $vCont;c:pid.tid for non-stop
-			// when multiple threads begin, focuses on the first
-			// thread we catch and the others will be stopped
-			char cmd[] = "vCont;c:xxxxxxxx.xxxxxxxx";
-			if (gdb_has_non_stop (gdb) && stop.pid != stop.tid
-			    && tcp->gdb_cont_pid_tid == true)
-				sprintf(cmd, "vCont;c:p%x.%x", stop.pid, stop.tid);
+		        // For non-stop use $vCont;c:pid.tid where pid.tid is
+		        // the thread gdbserver is focused on
+		        char cmd[] = "vCont;c:xxxxxxxx.xxxxxxxx";
+			struct tcb *general_tcp = gdb_find_thread(stop.general_tid, true);
+			if (gdb_has_non_stop (gdb) && stop.general_pid != stop.general_tid
+				&& general_tcp->flags & TCB_GDB_CONT_PID_TID)
+				sprintf(cmd, "vCont;c:p%x.%x", stop.general_pid, stop.general_tid);
 			else
 				sprintf(cmd, "vCont;c");
                         gdb_send(gdb, cmd, sizeof(cmd) - 1);
