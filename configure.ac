@@ -326,6 +326,10 @@ AC_CHECK_MEMBERS(m4_normalize([
 ]),,, [#include <signal.h>])
 
 AC_CHECK_MEMBERS(m4_normalize([
+	struct dm_ioctl.data
+]),,, [#include <linux/dm-ioctl.h>])
+
+AC_CHECK_MEMBERS(m4_normalize([
 	struct perf_event_attr.precise_ip,
 	struct perf_event_attr.mmap_data,
 	struct perf_event_attr.sample_id_all,

@@ -48,10 +48,23 @@
 
 # define STR32 "AbCdEfGhIjKlMnOpQrStUvWxYz012345"
 
+#ifndef offsetofend
+# define offsetofend(type, member) \
+	(offsetof(type, member) + sizeof(((type *)NULL)->member))
+#endif
+
 # define ALIGNED_SIZE(s_, t_) \
 	(((s_) + (ALIGNOF(t_) - 1UL)) & ~(ALIGNOF(t_) - 1UL))
 # define ALIGNED_OFFSET(t_, m_) \
 	ALIGNED_SIZE(offsetof(t_, m_), t_)
+# define ALIGNED_OFFSETEND(t_, m_) \
+	ALIGNED_SIZE(offsetofend(t_, m_), t_)
+
+#  if defined HAVE_STRUCT_DM_IOCTL_DATA && HAVE_STRUCT_DM_IOCTL_DATA
+#   define STRUCT_DM_IOCTL_SIZE (offsetof(struct dm_ioctl, data))
+#  else
+#   define STRUCT_DM_IOCTL_SIZE (offsetofend(struct dm_ioctl, uuid))
+#  endif
 
 static const char str129[] = STR32 STR32 STR32 STR32 "6";
 
@@ -62,8 +75,7 @@ static const __u64 dts_length_step = (__u64) 0x700000007ULL;
 static const __s32 dts_status_base = (__s32) 3141592653U;
 static const __s32 dts_status_step = 0x1234;
 
-static const size_t min_sizeof_dm_ioctl =
-	offsetof(struct dm_ioctl, data);
+static const size_t min_sizeof_dm_ioctl = STRUCT_DM_IOCTL_SIZE;
 
 static struct s {
 	struct dm_ioctl ioc;
@@ -184,9 +196,9 @@ main(void)
 	};
 
 	struct dm_ioctl *unaligned_dm_arg =
-		tail_alloc(offsetof(struct dm_ioctl, data));
+		tail_alloc(min_sizeof_dm_ioctl);
 	struct dm_ioctl *dm_arg =
-		tail_alloc(ALIGNED_OFFSET(struct dm_ioctl, data));
+		tail_alloc(ALIGNED_OFFSETEND(struct dm_ioctl, uuid));
 	struct dm_table_open_test *dm_arg_open1 =
 		tail_alloc(ALIGNED_OFFSET(struct dm_table_open_test, target1));
 	struct dm_table_open_test *dm_arg_open2 =
@@ -679,7 +691,7 @@ main(void)
 	/* Inaccessible data */
 	init_s(dm_arg, min_sizeof_dm_ioctl, min_sizeof_dm_ioctl);
 	dm_arg->data_size = sizeof(*dm_arg);
-	memcpy(unaligned_dm_arg, dm_arg, offsetof(struct dm_ioctl, data));
+	memcpy(unaligned_dm_arg, dm_arg, min_sizeof_dm_ioctl);
 	ioctl(-1, DM_DEV_RENAME, unaligned_dm_arg);
 	printf("ioctl(-1, DM_DEV_RENAME, "
 	       "{version=4.1.2, data_size=%zu, data_start=%zu, "
