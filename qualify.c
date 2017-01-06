@@ -154,13 +154,15 @@ sigstr_to_uint(const char *s)
 {
 	int i;
 
-	if (*s >= '0' && *s <= '9')
-		return string_to_uint_upto(s, 255);
+	if (*s >= '0' && *s <= '9') {
+		int signum = string_to_uint_upto(s, 255);
+		return signum > 0 ? signum : -1;
+	}
 
 	if (strncasecmp(s, "SIG", 3) == 0)
 		s += 3;
 
-	for (i = 0; i <= 255; ++i) {
+	for (i = 1; i <= 255; ++i) {
 		const char *name = signame(i);
 
 		if (strncasecmp(name, "SIG", 3) != 0)
