@@ -4,7 +4,7 @@ dist: trusty
 
 before_install: ./travis-install.sh
 
-script: ./travis-build.sh
+script: travis_wait 50 ./travis-build.sh
 
 sudo: required
 
@@ -21,35 +21,63 @@ matrix:
     - compiler: gcc
       env:
         - TARGET=x86_64
-    - compiler: gcc
-      env:
-        - TARGET=x32
-    - compiler: gcc
-      env:
-        - TARGET=x86
-    - compiler: clang-3.8
-      env:
-        - TARGET=x86_64
-    - compiler: musl-gcc
-      env:
-        - TARGET=x86_64
-    - compiler: clang-3.8
-      env:
-        - TARGET=x86
-    - compiler: musl-gcc
-      env:
-        - TARGET=x86
-    - compiler: gcc-7
-      env:
-        - TARGET=x86_64
-    - compiler: gcc-7
-      env:
-        - TARGET=x32
-    - compiler: gcc-7
-      env:
-        - TARGET=x86
+        - CHECK=valgrind
+        - TIMEOUT_DURATION=1200
+        - VALGRIND_TOOLS=memcheck
+        - VALGRIND_TESTDIR=tests
     - compiler: gcc
       env:
         - TARGET=x86_64
-        - CHECK=coverage
-        - KHEADERS=torvalds/linux
+        - CHECK=valgrind
+        - TIMEOUT_DURATION=1200
+        - VALGRIND_TOOLS=helgrind
+        - VALGRIND_TESTDIR=tests
+    - compiler: gcc
+      env:
+        - TARGET=x86_64
+        - CHECK=valgrind
+        - TIMEOUT_DURATION=1200
+        - VALGRIND_TOOLS=drd
+        - VALGRIND_TESTDIR=tests
+    - compiler: gcc
+      env:
+        - TARGET=x86_64
+        - CHECK=valgrind
+        - TIMEOUT_DURATION=1200
+        - VALGRIND_TOOLS=memcheck
+        - VALGRIND_TESTDIR=tests-m32
+    - compiler: gcc
+      env:
+        - TARGET=x86_64
+        - CHECK=valgrind
+        - TIMEOUT_DURATION=1200
+        - VALGRIND_TOOLS=helgrind
+        - VALGRIND_TESTDIR=tests-m32
+    - compiler: gcc
+      env:
+        - TARGET=x86_64
+        - CHECK=valgrind
+        - TIMEOUT_DURATION=1200
+        - VALGRIND_TOOLS=drd
+        - VALGRIND_TESTDIR=tests-m32
+    - compiler: gcc
+      env:
+        - TARGET=x86_64
+        - CHECK=valgrind
+        - TIMEOUT_DURATION=1200
+        - VALGRIND_TOOLS=memcheck
+        - VALGRIND_TESTDIR=tests-mx32
+    - compiler: gcc
+      env:
+        - TARGET=x86_64
+        - CHECK=valgrind
+        - TIMEOUT_DURATION=1200
+        - VALGRIND_TOOLS=helgrind
+        - VALGRIND_TESTDIR=tests-mx32
+    - compiler: gcc
+      env:
+        - TARGET=x86_64
+        - CHECK=valgrind
+        - TIMEOUT_DURATION=1200
+        - VALGRIND_TOOLS=drd
+        - VALGRIND_TESTDIR=tests-mx32
