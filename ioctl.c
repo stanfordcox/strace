@@ -264,6 +264,12 @@ ioctl_decode(struct tcb *tcp)
 	case 'o':
 	case 'O':
 		return ubi_ioctl(tcp, code, arg);
+	/*
+	 * 0x53 is shared by SCSI_*, CDROM*, DVD_*, and SNDRV_* ioctls. Call
+	 * scsi_ioctl() only for now as there are no other decoders implemented.
+	 */
+	case 'S' /* 0x53 */:
+		return scsi_ioctl(tcp, code, arg);
 	case 'V':
 		return v4l2_ioctl(tcp, code, arg);
 	case '=':
