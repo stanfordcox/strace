@@ -6,6 +6,7 @@
  * Copyright (c) 1999 IBM Deutschland Entwicklung GmbH, IBM Corporation
  *                     Linux for s390 port by D.J. Barrow
  *                    <barrow_dj@mail.yahoo.com,djbarrow@de.ibm.com>
+ * Copyright (C) 2016-2017 Intel Deutschland GmbH
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -817,6 +818,17 @@ trace_syscall_exiting(struct tcb *tcp)
 	if (tcp->qual_flg & QUAL_RAW) {
 		/* sys_res = printargs(tcp); - but it's nop on sysexit */
 	} else {
+#if HAVE_OPEN_MEMSTREAM
+		if (stage_output) {
+            if ( (not_failing_only && syserror(tcp) ) || (failing_only && !syserror(tcp)) ) {
+                drop_staged_out(tcp);
+                line_ended();
+                goto ret;	/* ignore failed/successful syscalls */
+            }
+		} else {
+			/* publish staged output later */
+		}
+#else
 	/* FIXME: not_failing_only (IOW, option -z) is broken:
 	 * failure of syscall is known only after syscall return.
 	 * Thus we end up with something like this on, say, ENOENT:
@@ -827,6 +839,7 @@ trace_syscall_exiting(struct tcb *tcp)
 	 */
 		if (not_failing_only && tcp->u_error)
 			goto ret;	/* ignore failed syscalls */
+#endif  /* #if HAVE_OPEN_MEMSTREAM */
 		if (tcp->sys_func_rval & RVAL_DECODED)
 			sys_res = tcp->sys_func_rval;
 		else
@@ -975,6 +988,11 @@ trace_syscall_exiting(struct tcb *tcp)
 	}
 	tprints("\n");
 	dumpio(tcp);
+#if HAVE_OPEN_MEMSTREAM
+	if (stage_output) {
+		publish_staged_out(tcp);
+	}
+#endif  /* #if HAVE_OPEN_MEMSTREAM */
 	line_ended();
 
 #ifdef USE_LIBUNWIND

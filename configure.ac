@@ -281,6 +281,7 @@ AC_CHECK_FUNCS(m4_normalize([
 	strsignal
 	sync_file_range
 	utimensat
+    open_memstream
 ]))
 
 AC_CHECK_TYPES([sig_atomic_t, struct sigcontext],,, [#include <signal.h>])

@@ -3,6 +3,7 @@
  * Copyright (c) 1993 Branko Lankester <branko@hacktic.nl>
  * Copyright (c) 1993, 1994, 1995, 1996 Rick Sladkey <jrs@world.std.com>
  * Copyright (c) 1996-1999 Wichert Akkerman <wichert@cistron.nl>
+ * Copyright (C) 2016-2017 Intel Deutschland GmbH
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -121,8 +122,12 @@ static int post_attach_sigstop = TCB_IGNORE_ONE_SIGSTOP;
 # define use_seize 0
 #endif
 
-/* Sometimes we want to print only succeeding syscalls. */
-bool not_failing_only = 0;
+/* Sometimes we want to print succeeding/failing syscalls only. */
+bool not_failing_only = false;
+#if HAVE_OPEN_MEMSTREAM
+bool failing_only = false;
+bool stage_output = false;
+#endif  /* #if HAVE_OPEN_MEMSTREAM */
 
 /* Show path associated with fd arguments */
 unsigned int show_fd_path = 0;
@@ -239,7 +244,13 @@ Filtering:\n\
   -e expr        a qualifying expression: option=[!]all or option=[!]val1[,val2]...\n\
      options:    trace, abbrev, verbose, raw, signal, read, write, fault\n\
   -P path        trace accesses to path\n\
-\n\
+"
+#if HAVE_OPEN_MEMSTREAM
+"  -z             print only succeeding syscalls\n\
+  -Z             print only failing syscalls\n\
+"
+#endif  /* #if HAVE_OPEN_MEMSTREAM */
+"\n\
 Tracing:\n\
   -b execve      detach on execve syscall\n\
   -D             run tracer process as a detached grandchild, not as parent\n\
@@ -267,9 +278,11 @@ Miscellaneous:\n\
 /* ancient, no one should use it
 -F -- attempt to follow vforks (deprecated, use -f)\n\
  */
+#if HAVE_OPEN_MEMSTREAM == 0 
 /* this is broken, so don't document it
 -z -- print only succeeding syscalls\n\
  */
+#endif  /* #if HAVE_OPEN_MEMSTREAM */
 , DEFAULT_ACOLUMN, DEFAULT_STRLEN, DEFAULT_SORTBY);
 	exit(0);
 }
@@ -573,16 +586,43 @@ void
 tprintf(const char *fmt, ...)
 {
 	va_list args;
+	int n = 0;
 
 	va_start(args, fmt);
+#if HAVE_OPEN_MEMSTREAM
 	if (current_tcp) {
-		int n = vfprintf(current_tcp->outf, fmt, args);
+		if (stage_output) {
+			if (NULL == current_tcp->memf) {
+				error_msg("tprintf: No file opened for current_tcp->memf\n");
+				goto ret;
+			}
+			n = vfprintf(current_tcp->memf, fmt, args);
+			if (n < 0) {
+				perror_msg("printing to memf");
+			}
+		} else {
+			n = vfprintf(current_tcp->outf, fmt, args);
+			if (n < 0) {
+				if (current_tcp->outf != stderr)
+					perror_msg("%s", outfname);
+			}
+		}
+	}
+
+	if (n >= 0)  {
+		current_tcp->curcol += n;
+	}
+ret:
+#else
+	if (current_tcp) {
+		n = vfprintf(current_tcp->outf, fmt, args);
 		if (n < 0) {
 			if (current_tcp->outf != stderr)
 				perror_msg("%s", outfname);
 		} else
 			current_tcp->curcol += n;
 	}
+#endif  /* #if HAVE_OPEN_MEMSTREAM */
 	va_end(args);
 }
 
@@ -594,7 +634,21 @@ void
 tprints(const char *str)
 {
 	if (current_tcp) {
-		int n = fputs_unlocked(str, current_tcp->outf);
+		int n;
+
+#if HAVE_OPEN_MEMSTREAM
+		if (stage_output) {
+			if (NULL == current_tcp->memf) {
+				error_msg("tprints: No file opened for current_tcp->memf\n");
+				return;
+			}
+			n = fputs_unlocked(str, current_tcp->memf);
+		} else {
+			n = fputs_unlocked(str, current_tcp->outf);
+		}
+#else
+		n = fputs_unlocked(str, current_tcp->outf);
+#endif  /* #if HAVE_OPEN_MEMSTREAM */
 		if (n >= 0) {
 			current_tcp->curcol += strlen(str);
 			return;
@@ -700,6 +754,11 @@ newoutf(struct tcb *tcp)
 		sprintf(name, "%.512s.%u", outfname, tcp->pid);
 		tcp->outf = strace_fopen(name);
 	}
+#if HAVE_OPEN_MEMSTREAM
+	if (not_failing_only || failing_only) {
+		strace_openmemstream(tcp);
+	}
+#endif  /* #if HAVE_OPEN_MEMSTREAM */
 }
 
 static void
@@ -1606,7 +1665,11 @@ init(int argc, char *argv[])
 #endif
 	qualify("signal=all");
 	while ((c = getopt(argc, argv,
+#if HAVE_OPEN_MEMSTREAM
+		"+b:cCdfFhiqrtTvVwxyzZ"
+#else
 		"+b:cCdfFhiqrtTvVwxyz"
+#endif /* HAVE_OPEN_MEMSTREAM */
 #ifdef USE_LIBUNWIND
 		"k"
 #endif
@@ -1680,6 +1743,11 @@ init(int argc, char *argv[])
 		case 'z':
 			not_failing_only = 1;
 			break;
+#if HAVE_OPEN_MEMSTREAM
+		case 'Z':
+			failing_only = 1;
+			break;
+#endif /* HAVE_OPEN_MEMSTREAM */
 		case 'a':
 			acolumn = string_to_uint(optarg);
 			if (acolumn < 0)
@@ -2132,6 +2200,11 @@ print_signalled(struct tcb *tcp, const int pid, int status)
 static void
 print_exited(struct tcb *tcp, const int pid, int status)
 {
+#if HAVE_OPEN_MEMSTREAM
+	bool saved_stage_output_flag = stage_output;
+
+	stage_output = false;
+#endif  /* #if HAVE_OPEN_MEMSTREAM */
 	if (pid == strace_child) {
 		exit_code = WEXITSTATUS(status);
 		strace_child = 0;
@@ -2143,11 +2216,19 @@ print_exited(struct tcb *tcp, const int pid, int status)
 		tprintf("+++ exited with %d +++\n", WEXITSTATUS(status));
 		line_ended();
 	}
+#if HAVE_OPEN_MEMSTREAM
+	stage_output = saved_stage_output_flag;
+#endif  /* #if HAVE_OPEN_MEMSTREAM */
 }
 
 static void
 print_stopped(struct tcb *tcp, const siginfo_t *si, const unsigned int sig)
 {
+#if HAVE_OPEN_MEMSTREAM
+	bool saved_stage_output_flag = stage_output;
+
+	stage_output = false;
+#endif  /* #if HAVE_OPEN_MEMSTREAM */
 	if (cflag != CFLAG_ONLY_STATS
 	    && !hide_log(tcp)
 	    && is_number_in_set(sig, &signal_set)) {
@@ -2160,6 +2241,9 @@ print_stopped(struct tcb *tcp, const siginfo_t *si, const unsigned int sig)
 			tprintf("--- stopped by %s ---\n", signame(sig));
 		line_ended();
 	}
+#if HAVE_OPEN_MEMSTREAM
+	stage_output = saved_stage_output_flag;
+#endif  /* #if HAVE_OPEN_MEMSTREAM */
 }
 
 static void
@@ -2488,13 +2572,26 @@ restart_tracee:
 int
 main(int argc, char *argv[])
 {
+#if HAVE_OPEN_MEMSTREAM
+
+	/* during init don't print to internal memf stream */
+	stage_output = false; 
+#endif  /* #if HAVE_OPEN_MEMSTREAM */
+
 	init(argc, argv);
 
 	exit_code = !nprocs;
 
+#if HAVE_OPEN_MEMSTREAM
+	stage_output = not_failing_only || failing_only; 
+#endif  /* #if HAVE_OPEN_MEMSTREAM */
 	while (trace())
 		;
 
+#if HAVE_OPEN_MEMSTREAM
+	/* during cleanup and shutdown don't print to internal memf stream */
+	stage_output = false;
+#endif  /* #if HAVE_OPEN_MEMSTREAM */
 	cleanup();
 	fflush(NULL);
 	if (shared_log != stderr)

@@ -2,6 +2,7 @@
  * Copyright (c) 1991, 1992 Paul Kranenburg <pk@cs.few.eur.nl>
  * Copyright (c) 1993 Branko Lankester <branko@hacktic.nl>
  * Copyright (c) 1993, 1994, 1995, 1996 Rick Sladkey <jrs@world.std.com>
+ * Copyright (C) 2016-2017 Intel Deutschland GmbH
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -222,6 +223,12 @@ struct tcb {
 	int sys_func_rval;	/* Syscall entry parser's return value */
 	int curcol;		/* Output column for this process */
 	FILE *outf;		/* Output file for this process */
+#if HAVE_OPEN_MEMSTREAM
+	FILE *memf;		/* Staged output file for this process */
+	char *memfptr;
+	size_t memfloc; 
+#endif  /* if HAVE_OPEN_MEMSTREAM */
+
 	const char *auxstr;	/* Auxiliary info from syscall (see RVAL_STR) */
 	void *_priv_data;	/* Private data for syscall decoding functions */
 	void (*_free_priv_data)(void *); /* Callback for freeing priv_data */
@@ -366,6 +373,10 @@ extern bool iflag;
 extern bool count_wallclock;
 extern unsigned int qflag;
 extern bool not_failing_only;
+#if HAVE_OPEN_MEMSTREAM
+extern bool failing_only;
+extern bool stage_output;	 /* allows dropping of failed/successful syscalls output */
+#endif  /* if HAVE_OPEN_MEMSTREAM */
 extern unsigned int show_fd_path;
 /* are we filtering traces based on paths? */
 extern const char **paths_selected;
@@ -738,6 +749,13 @@ extern void line_ended(void);
 extern void tabto(void);
 extern void tprintf(const char *fmt, ...) ATTRIBUTE_FORMAT((printf, 1, 2));
 extern void tprints(const char *str);
+
+/*
+ *  staging output for -z/-Z (not_failing_only/failing_only)
+ */
+extern FILE *strace_openmemstream(struct tcb *tcp);
+extern void drop_staged_out(struct tcb *tcp);
+extern void publish_staged_out(struct tcb *tcp);
 
 #if SUPPORTED_PERSONALITIES > 1
 extern void set_personality(int personality);
