@@ -336,9 +336,13 @@ gdb_ok(void)
         return ok;
 }
 
-void
+int
 gdb_init(void)
 {
+# if ! defined X86_64
+	return -1;		/* Only supported on x86_64 */
+# endif
+
         gdb_signal_map_init();
 
         if (gdbserver[0] == '|')
@@ -393,6 +397,7 @@ gdb_init(void)
         if (!gdb_vcont)
                 error_msg("gdb server doesn't support vCont");
         free(reply);
+	return 0;
 }
 
 static void

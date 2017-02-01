@@ -31,7 +31,7 @@
 
 char* gdbserver;
 
-void gdb_init(void);
+int gdb_init(void);
 void gdb_finalize_init(void);
 void gdb_cleanup(void);
 void gdb_detach(struct tcb *tcp);
