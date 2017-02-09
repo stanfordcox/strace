@@ -112,7 +112,8 @@ main(int argc, char *argv[])
 	if (!err) {
 		if (!*errstr)
 			err = DEFAULT_ERRNO;
-		else if (!strcasecmp(errstr, "EINVAL"))
+		else if (!strcasecmp(errstr, "EINVAL") ||
+		    !strcasecmp(errstr, "INVAL"))
 			err = EINVAL;
 		else
 			err = ENOSYS;
