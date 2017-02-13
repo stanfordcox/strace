@@ -52,6 +52,7 @@ static struct gdb_conn* gdb = NULL;
 static bool gdb_extended = false;
 static bool gdb_multiprocess = false;
 static bool gdb_vcont = false;
+static bool gdb_nonstop = false;
 
 static const char * const gdb_signal_names[] = {
 #define SET(symbol, constant, name, string) \
@@ -287,7 +288,7 @@ gdb_recv_stop(struct gdb_stop_reply *stop_reply)
 		       reply = gdb_recv(gdb, &stop_size, false); /* vContc OK */
 		  }
 		  else {
-		       while (stop.reply[0] != 'T')
+		       while (stop.reply[0] != 'T' && stop.reply[0] != 'W')
 			    stop.reply = gdb_recv(gdb, &stop.size, true);
 		  }
 	     }
@@ -348,6 +349,14 @@ gdb_init(void)
         if (gdbserver[0] == '|')
                 gdb = gdb_begin_command(gdbserver + 1);
         else if (strchr(gdbserver, ':') && !strchr(gdbserver, '/')) {
+		if (strchr(gdbserver, ';')) {
+			const char *stop_option;
+			gdbserver = strtok(gdbserver, ";");
+			stop_option = strtok(NULL, "");
+			stop_option += strspn(" ", stop_option);
+			if (!strcmp(stop_option, "non-stop"))
+				gdb_nonstop = true;
+		}
                 const char *node = strtok(gdbserver, ":");
                 const char *service = strtok(NULL, "");
                 gdb = gdb_begin_tcp(node, service);
@@ -528,11 +537,21 @@ gdb_startup_child(char **argv)
         if (!gdb_extended)
                 error_msg_and_die("gdb server doesn't support starting processes!");
 
+	/* Without knowing gdb's current tid, vCont of the correct thread for
+	   the multithreaded nonstop case is difficult, so default to all-stop */
+
         size_t i;
         size_t size = 4; // vRun
         for (i = 0; argv[i]; ++i) {
                 size += 1 + 2 * strlen(argv[i]); // ;hexified-argument
         }
+
+	if (gdb_nonstop) {
+		static const char nonstop_cmd[] = "QNonStop:1";
+		gdb_send(gdb, nonstop_cmd, sizeof(nonstop_cmd) - 1);
+		if (!gdb_ok())
+			gdb_nonstop = false;
+	}
 
         char *cmd = malloc(size);
         if (!cmd)
@@ -576,6 +595,8 @@ gdb_startup_child(char **argv)
         newoutf(tcp);
         gdb_init_syscalls();
 
+	if (gdb_nonstop)
+		gdb_set_non_stop(gdb, true);
         // TODO normal strace attaches right before exec, so the first syscall
         // seen is the execve with all its arguments.  Need to emulate that here?
         hide_log_until_execve = 0;
@@ -608,6 +629,8 @@ gdb_startup_attach(struct tcb *tcp)
 		  server sends: OK
 		  server sends: Stop:T05swbreak:;
 		  client sends: vStopped
+		  [ server sends: T05swbreak:;
+		    client sends: vStopped ]
 		  server sends: OK
 		*/
 		char cmd[] = "vCont;t:pXXXXXXXX";

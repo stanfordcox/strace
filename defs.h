@@ -422,6 +422,7 @@ extern void *get_tcb_priv_data(const struct tcb *);
 extern int set_tcb_priv_data(struct tcb *, void *priv_data,
 			     void (*free_priv_data)(void *));
 extern void free_tcb_priv_data(struct tcb *);
+extern struct tcb *pid2tcb(int pid);
 
 static inline unsigned long get_tcb_priv_ulong(const struct tcb *tcp)
 {
