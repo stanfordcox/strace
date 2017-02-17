@@ -40,7 +40,7 @@
 			return;
 		}
 
-		else if (size == 1088) {
+		else if (size >= 1088) {
 			get_regs_error = 0;
 			x86_io.iov_len = sizeof(x86_64_regs);
 

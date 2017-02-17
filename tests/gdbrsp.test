@@ -60,6 +60,24 @@ __EOF__
 match_grep "$LOG" "$EXPECTED"
 rm -f $EXPECTED
 
+if [ ARCH = x86_64 ] ; then
+    gdbserver --once --multi :65432 &
+    if [ $? -gt 0 ] ; then
+	framework_skip_ "Unable to start gdbserver"
+    fi
+    $STRACE -G localhost:65432 -e write,read $(readlink -f ./gdbrsp) >& $LOG 
+
+    EXPECTED="$LOG.expected"
+    cat > "$EXPECTED" << __EOF__
+write.4, "a.0", 2..* = 2
+read.3, "a.0", 2..* = 2
+.pid.*exited with 0.*
+__EOF__
+
+    match_grep "$LOG" "$EXPECTED"
+    rm -f $EXPECTED
+fi
+
 exit 0
 
 

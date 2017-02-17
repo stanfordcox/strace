@@ -35,6 +35,7 @@
 #include "gdbserver.h"
 #include "protocol.h"
 #include "signals.h"
+#include "scno.h"
 
 /* FIXME jistone: export hacks */
 struct tcb *pid2tcb(int pid);
@@ -841,6 +842,12 @@ gdb_trace(void)
                                     free(siginfo_reply);
                             }
                             break;
+            }
+
+            if (stop.code == __NR_exit_group)
+            {
+        	    free(stop.reply);
+        	    return false;
             }
 
 	    free(stop.reply);
