@@ -313,8 +313,10 @@ send_packet(FILE *out, const char *command, size_t size)
     // gdbserver.  e.g. giving "invalid hex digit" on an RLE'd address.
     // So just write raw here, and maybe let higher levels escape/RLE.
 
-    if (debug_flag)
-      printf("\tSending packet: $%s\n", command);
+    if (debug_flag) {
+	printf("\tSending packet: $%s\n", command);
+	fflush(stdout);
+    }
     fputc('$', out); // packet start
     fwrite(command, 1, size, out); // payload
     fprintf(out, "#%02x", sum); // packet end, checksum
@@ -378,6 +380,14 @@ push_notification(char *packet, size_t packet_size)
 	     break;
 	 }
      }
+     if (debug_flag) {
+	     int count = 0;
+	     for (idx = 0; idx < notifications_size; idx++) {
+		     if (notifications[idx] != NULL)
+			     count += 1;
+	     }
+	     printf ("Pushed %s\n%d items now in queue\n", packet, count);
+     }
 }
 
 
@@ -399,6 +409,16 @@ pop_notification(size_t *size)
      notification = notifications[idx];
      notifications[idx] = NULL;
      *size = strlen(notification);
+
+     if (debug_flag) {
+	     int count = 0;
+	     for (idx = 0; idx < notifications_size; idx++) {
+		     if (notifications[idx] != NULL)
+			     count += 1;
+	     }
+	     printf ("Popped %s\n%d items now in queue\n", notification, count);
+     }
+
      return notification;
 }
 
@@ -476,8 +496,10 @@ recv_packet(FILE *in, size_t *ret_size, bool* ret_sum_ok)
                 }
                 reply[i] = '\0';
 
-		if (debug_flag)
+		if (debug_flag) {
 		    printf("\tPacket received: %s\n", reply);
+		    fflush(stdout);
+		}
                 return reply;
 
             case '}': // escape: next char is XOR 0x20
@@ -555,8 +577,6 @@ gdb_recv(struct gdb_conn *conn, size_t *size, bool want_stop)
 	   type, then cache the notification. */
 	if (! want_stop && strncmp (reply, "T05syscall", 10) == 0) {
 	    push_notification(reply, *size);
-	    if (debug_flag)
-	        printf ("Pushed %s\n", reply);
 	    reply = recv_packet(conn->in, size, &acked);
 	  }
 

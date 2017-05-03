@@ -49,6 +49,8 @@ struct tcb *current_tcp;
 int strace_child;
 
 char* gdbserver = NULL;
+static int general_pid; // process id that gdbserver is focused on
+static int general_tid; // thread id that gdbserver is focused on
 static struct gdb_conn* gdb = NULL;
 static bool gdb_extended = false;
 static bool gdb_multiprocess = false;
@@ -86,8 +88,6 @@ struct gdb_stop_reply {
         int code; // error, signal, exit status, scno
         int pid; // process id, aka kernel tgid
         int tid; // thread id, aka kernel tid
-        int general_pid; // process id that gdbserver is focused on
-        int general_tid; // thread id that gdbserver is focused on
 };
 
 static int
@@ -200,13 +200,13 @@ gdb_recv_signal(struct gdb_stop_reply *stop)
                 if (!strcmp(n, "thread")) {
 			if (stop->pid == -1) {
 				gdb_parse_thread(r, &stop->pid, &stop->tid);
-				stop->general_pid = stop->pid;
-				stop->general_tid = stop->tid;
+				general_pid = stop->pid;
+				general_tid = stop->tid;
 			}
 			else
 				// an optional 2nd thread component is the
 				// thread that gdbserver is focused on
-				gdb_parse_thread(r, &stop->general_pid, &stop->general_tid);
+				gdb_parse_thread(r, &general_pid, &general_tid);
                 }
                 else if (!strcmp(n, "syscall_entry")) {
                         if (stop->type == gdb_stop_trap) {
@@ -266,6 +266,12 @@ gdb_recv_stop(struct gdb_stop_reply *stop_reply)
 	else
 	    stop.reply = gdb_recv(gdb, &stop.size, true);
 
+	if (debug_flag)
+	{
+		printf ("%s:%d %s\n", __FUNCTION__, __LINE__, stop.reply);
+		fflush(stdout);
+	}
+
 	if (gdb_has_non_stop(gdb) && !stop_reply) {
 	    /* non-stop packet order:
 	       client sends: $vCont;c
@@ -285,15 +291,9 @@ gdb_recv_stop(struct gdb_stop_reply *stop_reply)
 		  reply = gdb_recv(gdb, &stop_size, false); /* vContc OK */
 	     }
 	     else {
-		  if (stop.reply[0] == 'T') {
-		       reply = gdb_recv(gdb, &stop_size, false); /* vContc OK */
-		  }
-		  else {
-		       while (stop.reply[0] != 'T' && stop.reply[0] != 'W')
-			    stop.reply = gdb_recv(gdb, &stop.size, true);
-		  }
+		     while (stop.reply[0] != 'T' && stop.reply[0] != 'W')
+			     stop.reply = gdb_recv(gdb, &stop.size, true);
 	     }
-
 	}
 	if (gdb_has_non_stop(gdb) && (stop.reply[0] == 'T')) {
 		do {
@@ -777,6 +777,12 @@ gdb_trace(void)
                     return false;
             }
 
+            if (! (tcp->flags & TCB_GDB_CONT_PID_TID)) {
+        	    char cmd[] = "Hgxxxxxxxx";
+        	    sprintf(cmd, "Hg%x.%x", general_pid, stop.tid);
+        	    if (debug_flag)
+        		    printf ("%s %s\n", __FUNCTION__, cmd);
+                }
             get_regs(tid);
 
             // TODO need code equivalent to PTRACE_EVENT_EXEC?
@@ -844,8 +850,7 @@ gdb_trace(void)
                             break;
             }
 
-            if (stop.code == __NR_exit_group)
-            {
+            if (stop.code == __NR_exit_group) {
         	    free(stop.reply);
         	    return false;
             }
@@ -872,16 +877,16 @@ gdb_trace(void)
                         gdb_send(gdb, cmd, strlen(cmd));
                 }
         } else {
-                // just continue everyone
                 if (gdb_vcont) {
 		        // For non-stop use $vCont;c:pid.tid where pid.tid is
 		        // the thread gdbserver is focused on
 		        char cmd[] = "vCont;c:xxxxxxxx.xxxxxxxx";
-			struct tcb *general_tcp = gdb_find_thread(stop.general_tid, true);
-			if (gdb_has_non_stop (gdb) && stop.general_pid != stop.general_tid
-				&& general_tcp->flags & TCB_GDB_CONT_PID_TID)
-				sprintf(cmd, "vCont;c:p%x.%x", stop.general_pid, stop.general_tid);
-			else
+
+		        struct tcb *general_tcp = gdb_find_thread(general_tid, true);
+		        if (gdb_has_non_stop (gdb) && general_pid != general_tid
+		        		&& general_tcp->flags & TCB_GDB_CONT_PID_TID)
+		        	sprintf(cmd, "vCont;c:p%x.%x", general_pid, general_tid);
+		        else
 				sprintf(cmd, "vCont;c");
                         gdb_send(gdb, cmd, sizeof(cmd) - 1);
 		} else {
