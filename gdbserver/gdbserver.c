@@ -32,7 +32,6 @@
 #include <sys/wait.h>
 
 #include "defs.h"
-#include "gdbserver.h"
 #include "protocol.h"
 #include "signals.h"
 #include "scno.h"
@@ -338,11 +337,23 @@ gdb_ok(void)
         return ok;
 }
 
-int
-gdb_init(void)
+
+bool
+gdb_prog_pid_check (char *exec_name, int nprocs)
+{
+	/* under gdbserver, we can reasonably allow having neither to use existing targets.  */
+	if (!exec_name && !nprocs && !gdbserver)
+		return false;
+	return true;
+}
+
+
+bool
+gdb_start_init(void)
 {
 # if ! defined X86_64
-	return -1;		/* Only supported on x86_64 */
+	error_msg("-G is not supported on this target.");
+	return false;		/* Only supported on x86_64 */
 # endif
 
         gdb_signal_map_init();
@@ -407,8 +418,9 @@ gdb_init(void)
         if (!gdb_vcont)
                 error_msg("gdb server doesn't support vCont");
         free(reply);
-	return 0;
+	return true;
 }
+
 
 static void
 gdb_init_syscalls(void)
@@ -504,7 +516,7 @@ gdb_enumerate_threads(void)
 }
 
 void
-gdb_finalize_init(void)
+gdb_end_init(void)
 {
         // We enumerate all attached threads to be sure, especially since we
         // get all threads on vAttach, not just the one pid.
@@ -783,8 +795,6 @@ gdb_trace(void)
         	    if (debug_flag)
         		    printf ("%s %s\n", __FUNCTION__, cmd);
                 }
-            get_regs(tid);
-
             // TODO need code equivalent to PTRACE_EVENT_EXEC?
 
             /* Is this the very first time we see this tracee stopped? */
@@ -897,8 +907,9 @@ gdb_trace(void)
         return true;
 }
 
+
 char *
-gdb_get_regs(pid_t tid, size_t *size)
+gdb_get_all_regs(pid_t tid, size_t *size)
 {
         if (!gdb)
                 return NULL;
@@ -907,6 +918,18 @@ gdb_get_regs(pid_t tid, size_t *size)
          * may not be the case, we should send "HgTID" first, and restore.  */
         gdb_send(gdb, "g", 1);
         return gdb_recv(gdb, size, false);
+}
+
+
+int
+gdb_get_regs (pid_t pid, void *io)
+#include "gdb_get_regs.c"
+
+
+int
+gdb_get_scno(struct tcb *tcp)
+{
+	return 1;
 }
 
 int
@@ -945,8 +968,30 @@ gdb_read_mem(pid_t tid, long addr, unsigned int len, bool check_nil, char *out)
         return 0;
 }
 
+
 int
-gdb_getfdpath(pid_t tid, int fd, char *buf, unsigned bufsize)
+gdb_umoven (struct tcb *const tcp, kernel_ulong_t addr, unsigned int len,
+		void *const our_addr)
+{
+	return gdb_read_mem(tcp->pid, addr, len, false, our_addr);
+}
+
+
+int
+gdb_umovestr (struct tcb *const tcp, kernel_ulong_t addr, unsigned int len, char *laddr)
+{
+	return gdb_read_mem(tcp->pid, addr, len, true, laddr);
+}
+
+int
+gdb_upeek(int pid, unsigned long off, kernel_ulong_t *res)
+{
+       return gdb_read_mem(pid, off, current_wordsize, false, (char*)res);
+}
+
+
+int
+gdb_getfdpath(struct tcb *tcp, int fd, char *buf, unsigned bufsize)
 {
         if (!gdb || fd < 0)
                 return -1;
@@ -956,6 +1001,51 @@ gdb_getfdpath(pid_t tid, int fd, char *buf, unsigned bufsize)
          * just like normal getfdpath does.  Maybe that won't always be true.
          */
         char linkpath[sizeof("/proc/%u/fd/%u") + 2 * sizeof(int)*3];
-        sprintf(linkpath, "/proc/%u/fd/%u", tid, fd);
+        sprintf(linkpath, "/proc/%u/fd/%u", tcp->pid, fd);
         return gdb_readlink(gdb, linkpath, buf, bufsize);
+}
+
+
+bool
+gdb_verify_args (char *username, bool daemon, unsigned int *follow_fork)
+{
+	if (username) {
+		error_msg_and_die("-u and -G are mutually exclusive");
+	}
+
+	if (daemon) {
+		error_msg_and_die("-D and -G are mutually exclusive");
+	}
+
+	if (!*follow_fork) {
+		error_msg("-G is always multithreaded, implies -f");
+		*follow_fork = 1;
+	}
+	return true;
+}
+
+
+bool
+gdb_handle_arg (char arg, char *optarg)
+{
+	if (arg != 'G')
+		return false;
+
+	gdbserver = optarg;
+	backend.cleanup = gdb_cleanup;
+	backend.detach = gdb_detach;
+	backend.end_init = gdb_end_init;
+	backend.get_regs = gdb_get_regs;
+	backend.get_scno = gdb_get_scno;
+	backend.getfdpath = gdb_getfdpath;
+        backend.prog_pid_check = gdb_prog_pid_check;
+	backend.start_init = gdb_start_init;
+	backend.startup_attach = gdb_startup_attach;
+	backend.startup_child = gdb_startup_child;
+	backend.trace = gdb_trace;
+	backend.umoven = gdb_umoven;
+	backend.umovestr = gdb_umovestr;
+	backend.upeek_ = gdb_upeek;
+	backend.verify_args = gdb_verify_args;
+	return true;
 }

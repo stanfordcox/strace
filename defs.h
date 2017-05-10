@@ -399,6 +399,7 @@ extern int syscall_exiting_decode(struct tcb *, struct timeval *);
 extern int syscall_exiting_trace(struct tcb *, struct timeval, int);
 extern void syscall_exiting_finish(struct tcb *);
 
+extern void update_personality(struct tcb *tcp, unsigned int personality);
 extern void count_syscall(struct tcb *, const struct timeval *);
 extern void call_summary(FILE *);
 

@@ -57,8 +57,6 @@
 #include "printsiginfo.h"
 #include "trace_event.h"
 
-#include "gdbserver.h"
-
 /* In some libc, these aren't declared. Do it ourself: */
 extern char **environ;
 extern int optind;
@@ -1831,7 +1829,8 @@ init(int argc, char *argv[])
 			not_failing_only = 1;
 			break;
 		default:
-			error_msg_and_help(NULL);
+			if (!tracing_backend_handle_arg(c, optarg))
+				error_msg_and_help(NULL);
 			break;
 		}
 	}
@@ -1850,21 +1849,6 @@ init(int argc, char *argv[])
 				  "please use -f instead");
 			followfork = optF;
 		}
-	}
-
-	if (gdbserver) {
-	   if (username) {
-		   error_msg_and_die("-u and -G are mutually exclusive");
-	   }
-
-	   if (daemonized_tracer) {
-		   error_msg_and_die("-D and -G are mutually exclusive");
-	   }
-
-	   if (!followfork) {
-		   error_msg("-G is always multithreaded, implies -f");
-		   followfork = 1;
-	   }
 	}
 
 	if (followfork >= 2 && cflag) {

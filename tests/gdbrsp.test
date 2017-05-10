@@ -43,7 +43,7 @@ gdbserver --once --multi :65432 &
 if [ $? -gt 0 ] ; then
     framework_skip_ "Unable to start gdbserver"
 fi
-$STRACE -G localhost:65432 ./gdbrsp >& $LOG 
+$STRACE -G localhost:65432 $(readlink -f ../gdbrsp) >& $LOG 
 
 EXPECTED="$LOG.expected"
 cat > "$EXPECTED" << __EOF__
@@ -54,7 +54,7 @@ write.4, "a.0", 2..* = 2
 read.3, "a.0", 2..* = 2
 vfork.*unfinished.*
 .pid.*exited with 0.*
-.pid.*vfork resumed.* =.*
+.*vfork resumed.* =.*
 __EOF__
 
 match_grep "$LOG" "$EXPECTED"
