@@ -69,4 +69,4 @@ sendmsg\\(3$socket, $msg_head\\[$rights\\]$msg_tail\\}, 0\\) = 15
 recvmsg\\(0$socket, $msg_head\\[$creds, $rights\\]$msg_tail\\}, 0\\) = 15
 __EOF__
 
-match_grep "$LOG" "$EXP"
+match_grep -l "$LOG" "$EXP"

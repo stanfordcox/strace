@@ -173,14 +173,27 @@ match_diff()
 		fail_ "$error"
 }
 
-# Usage: [FILE_TO_CHECK [FILE_WITH_PATTERNS [ERROR_MESSAGE]]]
+# Usage: [-l [FILE_TO_CHECK [FILE_WITH_PATTERNS [ERROR_MESSAGE]]]]
 # Check whether all patterns listed in FILE_WITH_PATTERNS
 # match FILE_TO_CHECK using egrep.
 # If at least one of these patterns does not match,
 # dump both files and fail with ERROR_MESSAGE.
+# Utilises fds 7, 8, 9 for its operation.
+# -l allows loose match, when the whole file is checked and not on
+#    line-by-line basis.
 match_grep()
 {
-	local output patterns error pattern cnt failed=
+	local saved_ifs loose output patterns error pattern cnt failed=
+	if [ $# -eq 0 ]; then
+		loose=0
+	else
+		if [ "$1" = "-l" ]; then
+			loose=1
+			shift
+		else
+			loose=0
+		fi
+	fi
 	if [ $# -eq 0 ]; then
 		output="$LOG"
 	else
@@ -200,20 +213,45 @@ match_grep()
 	check_prog wc
 	check_prog grep
 
+	# Three random fds, presumably free
+	exec 7<"$patterns"
+	[ "$loose" = 1 ] || exec 8<"$output"
+
+	exec 9<&0
+	exec <&7
+
+	saved_ifs="$IFS"
+	IFS=""
 	cnt=1
 	while read -r pattern; do
-		LC_ALL=C grep -E -x -e "$pattern" < "$output" > /dev/null || {
+		[ "$loose" != 0 ] || read -r outline <&8
+
+		{ if [ "$loose" = 0 ]; then
+			printf "%s\n" "$outline"
+		else
+			cat "$output"
+		fi; } | LC_ALL=C grep -E -x -e "$pattern" > /dev/null || {
 			test -n "$failed" || {
 				echo 'Failed patterns of expected output:'
 				failed=1
 			}
 			printf '#%d: %s\n' "$cnt" "$pattern"
+			[ "$loose" = 1 ] || printf '	(got "%s")\n' "$outline"
 		}
 		cnt=$(($cnt + 1))
-	done < "$patterns"
+	done
+	IFS="$saved_ifs"
+
+	exec <&9
+
+	exec 7<&- 9<&-
+	[ "$loose" = 1 ] || exec 8<&-
+
 	test -z "$failed" || {
-		echo 'Actual output:'
-		cat < "$output"
+		if [ "$loose" = 1 ]; then
+			echo 'Actual output:'
+			cat < "$output"
+		fi
 		fail_ "$error"
 	}
 }

@@ -6,6 +6,6 @@
 
 run_prog ../net-accept-connect net-local-stream
 run_strace_merge -e%network $args
-match_grep
+match_grep -l
 
 exit 0

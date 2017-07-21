@@ -6,6 +6,6 @@
 
 run_prog
 run_strace -e%desc $args
-match_grep
+match_grep -l
 
 exit 0

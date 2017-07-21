@@ -55,4 +55,4 @@ cat > "$EXP" << __EOF__
 \\[\\?{$len}\\] \\+\\+\\+ exited with 0 \\+\\+\\+
 __EOF__
 
-match_grep "$LOG" "$EXP"
+match_grep -l "$LOG" "$EXP"
