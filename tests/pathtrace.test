@@ -1,0 +1,14 @@
+#!/bin/sh
+
+# Check path tracing feature.
+
+PATH_TRACE="path_trace_test.sample"
+
+. "${srcdir=.}/init.sh"
+
+touch "$PATH_TRACE"
+
+run_strace -v -a 1 -P "$PATH_TRACE" -e verbose=none -e fault=all -e fault=open,dup2,close:when=2+ ../pathtrace > $EXP
+match_grep "$LOG" "$EXP"
+
+exit 0

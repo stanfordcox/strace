@@ -112,6 +112,7 @@ check_PROGRAMS = $(PURE_EXECUTABLES) \
 	netlink_netlink_diag \
 	netlink_unix_diag \
 	nsyscalls \
+	pathtrace \
 	pc \
 	perf_event_open_nonverbose \
 	perf_event_open_unabbrev \
@@ -262,6 +263,7 @@ MISC_TESTS = \
 	ksysent.test \
 	opipe.test \
 	options-syntax.test \
+	pathtrace.test \
 	pc.test \
 	printpath-umovestr-legacy.test \
 	printstrn-umoven-legacy.test \
