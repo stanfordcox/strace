@@ -344,9 +344,15 @@ strace_SOURCES =	\
 	# end of strace_SOURCES
 
 if ENABLE_GDBSERVER
+# Note that (some of) the files inside this directory are GPLv3-licensed,
+# so the package which includes them will also be tainted by GPLv3 license.
 strace_SOURCES +=		\
 	gdbserver/gdbserver.c	\
-	gdbserver/protocol.c
+	gdbserver/protocol.c	\
+	gdbserver/protocol.h	\
+	gdbserver/signals.def	\
+	gdbserver/signals.h	\
+	# end of gdbserver strace_SOURCES
 endif
 
 if USE_LIBUNWIND
@@ -901,6 +907,13 @@ EXTRA_DIST =				\
 	$(XLAT_HEADER_FILES)		\
 	xlat/gen.sh			\
 	xlate.el
+
+if ENABLE_GDBSERVER
+EXTRA_DIST +=					\
+	gdbserver/x86_64/gdb_arch_defs.h	\
+	gdbserver/x86_64/gdb_get_regs.c		\
+	# End of gdbserver EXTRA_DIS
+endif
 
 .PHONY: check-valgrind-local
 check-valgrind-local:
