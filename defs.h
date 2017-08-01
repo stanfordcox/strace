@@ -649,6 +649,8 @@ print_struct_statfs64(struct tcb *, kernel_ulong_t addr, kernel_ulong_t size);
 
 extern void print_ifindex(unsigned int);
 
+extern unsigned int next_set_qual_scno(const unsigned int scno,
+				       unsigned qual_flg);
 extern void qualify(const char *);
 extern unsigned int qual_flags(const unsigned int);
 
