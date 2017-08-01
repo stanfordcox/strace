@@ -613,7 +613,7 @@ gdb_startup_child(char **argv)
 		gdb_set_non_stop(gdb, true);
         // TODO normal strace attaches right before exec, so the first syscall
         // seen is the execve with all its arguments.  Need to emulate that here?
-	// Need to handle TCB_HIDE_LOG and hide_log(tcp) ?
+	tcp->flags &= ~TCB_HIDE_LOG;
 }
 
 void
@@ -735,6 +735,7 @@ gdb_next_event(int *pstatus, siginfo_t *si)
 	stop = gdb_recv_stop(NULL);
 	if (stop.size == 0)
 		error_msg_and_die("gdb server gave an empty stop reply!?");
+
 	switch (stop.type) {
 	case gdb_stop_unknown:
 		error_msg_and_die("gdb server stop reply unknown: %.*s",
@@ -787,7 +788,10 @@ gdb_next_event(int *pstatus, siginfo_t *si)
 		tcp->scno = stop.code;
 		gdb_sig = stop.code;
 		*pstatus = gdb_signal_to_target(tcp, gdb_sig);
-		return TE_SYSCALL_STOP;
+		if (stop.code == __NR_exit_group)
+			return TE_GROUP_STOP;
+		else
+			return TE_SYSCALL_STOP;
 
 	case gdb_stop_syscall_return:
 		// If we missed the entry, recording a return will only
@@ -825,10 +829,6 @@ gdb_next_event(int *pstatus, siginfo_t *si)
 		break;
 	}
 
-	if (stop.code == __NR_exit_group) {
-		return TE_GROUP_STOP;
-	}
-
 	return TE_RESTART;
 }
 
@@ -840,10 +840,11 @@ gdb_dispatch_event(enum trace_event ret, int *pstatus, siginfo_t *si)
 {
 	int gdb_sig = 0;
 	struct tcb *tcp = current_tcp;
-	pid_t tid = current_tcp->pid;
+	pid_t tid;
 	unsigned int sig = 0;
 
 
+	tid = tcp->pid;
 	if (! (tcp->flags & TCB_GDB_CONT_PID_TID)) {
 		char cmd[] = "Hgxxxxxxxx";
 		sprintf(cmd, "Hg%x.%x", general_pid, general_tid);
@@ -882,26 +883,31 @@ gdb_dispatch_event(enum trace_event ret, int *pstatus, siginfo_t *si)
 	case TE_SIGNALLED:
 		print_signalled(tcp, tid, *pstatus);
 		droptcb(tcp);
+		free(stop.reply);
 		return false;
 
 	case TE_EXITED:
 		print_exited(tcp, tid, *pstatus);
 		droptcb(tcp);
-		return false;
-
-	case TE_GROUP_STOP:
-		sig = *pstatus;
-		return false;
+		if (!gdb_multiprocess) {
+			free(stop.reply);
+			return false;
+		}
+		break;
 
 	case TE_STOP_BEFORE_EXECVE:
 	case TE_STOP_BEFORE_EXIT:
 		// TODO handle this?
 		return false;
 
+	case TE_GROUP_STOP:
+		trace_syscall(tcp, &sig);
+		sig = *pstatus;
+		return false;
+
 	case TE_NEXT:
 		break;
 	}
-
 
 	free(stop.reply);
 	// TODO Do we need to handle pop_notification here?
