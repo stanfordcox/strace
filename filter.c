@@ -39,6 +39,7 @@ free_ ## name ## _filter(void *)					\
 
 DECL_FILTER(syscall);
 DECL_FILTER(fd);
+DECL_FILTER(path);
 #undef DECL_FILTER
 
 #define FILTER_TYPE(name)						\
@@ -53,6 +54,7 @@ static const struct filter_type {
 } filter_types[] = {
 	FILTER_TYPE(syscall),
 	FILTER_TYPE(fd),
+	FILTER_TYPE(path),
 };
 #undef FILTER_TYPE
 

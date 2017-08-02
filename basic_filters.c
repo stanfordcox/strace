@@ -510,3 +510,34 @@ free_fd_filter(void *_priv_data)
 	free(set);
 	return;
 }
+
+void *
+parse_path_filter(const char *path, const char *const name)
+{
+	struct path_set *set = xmalloc(sizeof(struct path_set));
+
+	memset(set, 0, sizeof(struct path_set));
+	pathtrace_select_set(xstrdup(path), set);
+	return set;
+}
+
+bool
+run_path_filter(struct tcb *tcp, void *_priv_data)
+{
+	struct path_set *set = _priv_data;
+
+	return pathtrace_match_set(tcp, set);
+}
+
+void
+free_path_filter(void *_priv_data)
+{
+	struct path_set *set = _priv_data;
+	unsigned int i;
+
+	for (i = 0; i < set->num_selected; ++i)
+		free((char *)set->paths_selected[i]);
+	free(set->paths_selected);
+	free(set);
+	return;
+}
