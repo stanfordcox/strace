@@ -1,0 +1,27 @@
+#!/bin/sh
+
+# Check fd filtering
+
+. "${srcdir=.}/init.sh"
+
+check_prog grep
+check_prog sed
+run_prog > /dev/null
+
+syscall=
+for n in mmap mmap2; do
+	$STRACE -e$n -h > /dev/null && syscall=$syscall,$n
+done
+run_strace -e "trace(syscall $syscall && fd 5)" $args > /dev/null
+
+if grep '^mmap(NULL, 0, PROT_NONE,' < "$LOG" > /dev/null; then
+	mmap=mmap
+elif grep '^mmap2(NULL, 0, PROT_NONE,' < "$LOG" > /dev/null; then
+	mmap=mmap2
+else
+	dump_log_and_fail_with "mmap/mmap2 not found in $STRACE $args output"
+fi
+
+run_prog "../$NAME" "$mmap" > /dev/null
+run_strace -a12 -e "trace(fd 5)" $args > "$EXP"
+match_diff "$LOG" "$EXP"

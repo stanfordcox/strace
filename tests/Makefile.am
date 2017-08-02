@@ -92,6 +92,7 @@ check_PROGRAMS = $(PURE_EXECUTABLES) \
 	execve-v \
 	execveat-v \
 	filter-unavailable \
+	filtering_fd \
 	fork-f \
 	getpid	\
 	getppid	\
@@ -257,6 +258,8 @@ MISC_TESTS = \
 	detach-stopped.test \
 	filter-unavailable.test \
 	fflush.test \
+	filtering_fd-syntax.test \
+	filtering_fd.test \
 	filtering_syscall-syntax.test \
 	get_regs.test \
 	interactive_block.test \
