@@ -59,6 +59,20 @@ static ssize_t strace_process_vm_readv(pid_t pid,
 		       (long) pid, lvec, liovcnt, rvec, riovcnt, flags);
 }
 # define process_vm_readv strace_process_vm_readv
+
+/*
+ * The same goes for process_vm_writev().
+ */
+static ssize_t strace_process_vm_writev(pid_t pid,
+		 const struct iovec *lvec,
+		 unsigned long liovcnt,
+		 const struct iovec *rvec,
+		 unsigned long riovcnt,
+		 unsigned long flags)
+{
+	return syscall(__NR_process_vm_writev, (long)pid, lvec, liovcnt, rvec, riovcnt, flags);
+}
+# define process_vm_writev strace_process_vm_writev
 #endif /* !HAVE_PROCESS_VM_READV */
 
 static ssize_t
@@ -84,6 +98,35 @@ vm_read_mem(const pid_t pid, void *const laddr,
 	};
 
 	const ssize_t rc = process_vm_readv(pid, &local, 1, &remote, 1, 0);
+	if (rc < 0 && errno == ENOSYS)
+		process_vm_readv_not_supported = true;
+
+	return rc;
+}
+
+static ssize_t
+vm_write_mem(const pid_t pid, const void *const laddr,
+	    const kernel_ulong_t raddr, const size_t len)
+{
+	const unsigned long truncated_raddr = raddr;
+
+#if SIZEOF_LONG < SIZEOF_KERNEL_LONG_T
+	if (raddr != (kernel_ulong_t) truncated_raddr) {
+		errno = EIO;
+		return -1;
+	}
+#endif
+
+	const struct iovec local = {
+		.iov_base = (void *) laddr,
+		.iov_len = len
+	};
+	const struct iovec remote = {
+		.iov_base = (void *) truncated_raddr,
+		.iov_len = len
+	};
+
+	const ssize_t rc = process_vm_writev(pid, &local, 1, &remote, 1, 0);
 	if (rc < 0 && errno == ENOSYS)
 		process_vm_readv_not_supported = true;
 
@@ -323,4 +366,154 @@ umovestr(struct tcb *const tcp, kernel_ulong_t addr, unsigned int len,
 	}
 
 	return 0;
+}
+
+static bool
+partial_poke(int pid, kernel_ulong_t addr, unsigned int len, const void *laddr,
+	     unsigned int off)
+{
+	union {
+		long val;
+		char x[sizeof(long)];
+	} u;
+	errno = 0;
+	u.val = ptrace(PTRACE_PEEKDATA, pid, addr, 0);
+	switch (errno) {
+		case 0:
+			break;
+		case ESRCH: case EINVAL:
+			/* these could be seen if the process is gone */
+			return false;
+		case EFAULT: case EIO: case EPERM:
+			/* address space is inaccessible */
+			return false;
+		default:
+			/* all the rest is strange and should be reported */
+			perror_msg("partial_poke: PTRACE_PEEKDATA pid:%d @0x%" PRI_klx,
+				    pid, addr);
+			return false;
+	}
+
+	memcpy(u.x + off, laddr, len);
+
+	/* now write it back */
+	if (ptrace(PTRACE_POKEDATA, pid, addr, u.val) < 0) {
+		switch (errno) {
+			case ESRCH: case EINVAL:
+				/* these could be seen if the process is gone */
+				return -1;
+			case EFAULT: case EIO: case EPERM:
+				/* address space is inaccessible, or write is prohibited */
+				return -1;
+			default:
+				/* all the rest is strange and should be reported */
+				perror_msg("partial_poke: PTRACE_POKEDATA pid:%d @0x%" PRI_klx,
+					    pid, addr);
+				return -1;
+		}
+	}
+
+	return true;
+}
+
+/* legacy method of copying to tracee */
+static int
+upoken_peekdata(const int pid, kernel_ulong_t addr, unsigned int len,
+		void *our_addr)
+{
+	const char *laddr = our_addr;
+
+	if (!len)
+		return 0;
+
+	if (addr & (sizeof(long) - 1)) {
+		/* addr not a multiple of sizeof(long) */
+		unsigned n = addr & (sizeof(long) - 1);	/* residue */
+		addr &= -sizeof(long);			/* aligned address */
+		unsigned m = MIN(sizeof(long) - n, len);
+		if (!partial_poke(pid, addr, m, laddr, n))
+			return -1;
+		addr += sizeof(long);
+		laddr += m;
+		len -= m;
+	}
+
+	while (len >= sizeof(long)) {
+		if (ptrace(PTRACE_POKEDATA, pid, addr, * (const long *) laddr) < 0) {
+			switch (errno) {
+			case ESRCH: case EINVAL:
+				/* these could be seen if the process is gone */
+				return -1;
+			case EFAULT: case EIO: case EPERM:
+				/* address space is inaccessible, or write is prohibited */
+				return -1;
+			default:
+				/* all the rest is strange and should be reported */
+				perror_msg("upoken: PTRACE_POKEDATA pid:%d @0x%" PRI_klx,
+					    pid, addr);
+				return -1;
+			}
+		}
+		addr += sizeof(long);
+		laddr += sizeof(long);
+		len -= sizeof(long);
+	}
+
+	if (len) {
+		if (!partial_poke(pid, addr, len, laddr, 0))
+			return -1;
+	}
+
+	return 0;
+}
+
+int
+upoken(struct tcb *tcp, kernel_ulong_t addr, unsigned int len,
+       const void *const our_addr)
+{
+	const char *laddr = our_addr;
+	int pid = tcp->pid;
+
+	if (!len)
+		return 0;
+
+#if ANY_WORDSIZE_LESS_THAN_KERNEL_LONG
+	if (current_wordsize < sizeof(addr)
+	    && (addr & (~(kernel_ulong_t) -1U))) {
+		return -1;
+	}
+#endif
+
+	if (process_vm_readv_not_supported)
+		return upoken_peekdata(pid, addr, len, laddr);
+
+
+	int r = vm_write_mem(pid, laddr, addr, len);
+	if ((unsigned int) r == len)
+		return 0;
+
+	if (r >= 0) {
+		error_msg("upoken: short write (%u < %u) @0x%" PRI_klx,
+			  (unsigned int) r, len, addr);
+		return -1;
+	}
+
+	switch (errno) {
+	case ENOSYS:
+	case EPERM:
+		/* operation not permitted, try PTRACE_POKEDATA */
+		return upoken_peekdata(pid, addr, len, laddr);
+	case ESRCH:
+		/* the process is gone */
+		return -1;
+	case EFAULT:
+	case EIO:
+		/* address space is inaccessible */
+		return -1;
+	}
+
+	/* all the rest is strange and should be reported */
+	perror_msg("process_vm_writev: pid:%d @0x%" PRI_klx, pid, addr);
+
+	return -1;
 }

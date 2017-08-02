@@ -1122,6 +1122,12 @@ Reads a path C string from the current tracee process at address \fIaddr\fR.
 Returns a Lua string on success, \fBnil, "readerr"\fR on read error, and
 \fBnil, "toolong"\fR if the \fBPATH_MAX\fR limit was exceeded.
 .TP
+\fIstatus\fR = \fBstrace.write_obj\fR(\fIaddr\fR, \fIobj\fR)
+Wrties a FFI cdata object \fIobj\fR to the address \fIaddr\fR of the current
+tracee process's address space.
+.IP
+Returns \fBtrue\fR on success and \fBfalse\fR on failure.
+.TP
 \fIstatus\fR = \fBstrace.hook\fR(\fIscname\fR, \fIwhen\fR, \fIcb\fR)
 .TP
 \fIstatus\fR = \fBstrace.hook_class\fR(\fIclsname\fR, \fIwhen\fR, \fIcb\fR)

@@ -251,6 +251,18 @@ function strace.read_path(addr)
 	return strace.read_str(addr, strace.path_max, strace.path_max + 1)
 end
 
+function strace.write_obj(addr, obj)
+	local n = ffi.sizeof(obj)
+	-- work around FFI pointer semantics
+	if n == ptr_size then
+		-- it may be a pointer, and it is cheap to create a local copy
+		pcall(function()
+			obj = ffi.typeof('$ [1]', ffi.typeof(obj))(obj)
+		end)
+	end
+	return strace.C.upoke(addr, n, obj) == 0
+end
+
 local function parse_when(when)
 	if type(when) == 'table' then
 		return unpack(when)
