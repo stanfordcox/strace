@@ -29,6 +29,7 @@
 #include "defs.h"
 #include <regex.h>
 #include "filter.h"
+#include "syscall.h"
 
 typedef unsigned int number_slot_t;
 #define BITS_PER_SLOT (sizeof(number_slot_t) * 8)
@@ -414,15 +415,90 @@ parse_fd_filter(const char *str)
 	return set;
 }
 
+static bool
+is_fd_in_set(struct tcb *tcp, int fd, void *data) {
+	struct number_set *set = data;
+
+	if (fd < 0)
+		return set->not;
+	return is_number_in_set(fd, set);
+}
+
 bool
 run_fd_filter(struct tcb *tcp, void *_priv_data)
 {
-	int fd = tcp->u_arg[0];
 	struct number_set *set = _priv_data;
+	const struct_sysent *s_ent = tcp->s_ent;
 
-	if (fd < 0)
+	/*
+	 * mq_timedsend and mq_timedreceive are not marked as descriptor
+	 * syscalls, but they can be dumped with -e read/write.
+	*/
+	switch (s_ent->sen) {
+	case SEN_mq_timedsend:
+	case SEN_mq_timedreceive:
+		return is_fd_in_set(tcp, tcp->u_arg[0], set);
+	}
+
+	if (!(s_ent->sys_flags & (TRACE_DESC | TRACE_NETWORK)))
 		return false;
-	return is_number_in_set(fd, set);
+
+	if (match_fd_common(tcp, &is_fd_in_set, set))
+		return true;
+
+	switch (s_ent->sen) {
+	/* Already tested with match_fd_common. */
+	case SEN_dup2:
+	case SEN_dup3:
+	case SEN_kexec_file_load:
+	case SEN_sendfile:
+	case SEN_sendfile64:
+	case SEN_tee:
+	case SEN_linkat:
+	case SEN_renameat2:
+	case SEN_renameat:
+	case SEN_copy_file_range:
+	case SEN_splice:
+	case SEN_old_mmap:
+#if defined(S390)
+	case SEN_old_mmap_pgoff:
+#endif
+	case SEN_mmap:
+	case SEN_mmap_4koff:
+	case SEN_mmap_pgoff:
+	case SEN_ARCH_mmap:
+	case SEN_symlinkat:
+	case SEN_fanotify_mark:
+	case SEN_oldselect:
+	case SEN_pselect6:
+	case SEN_select:
+	case SEN_poll:
+	case SEN_ppoll:
+	/*
+	 * These have TRACE_DESCRIPTOR or TRACE_NETWORK set,
+	 * but they don't have any file descriptor to test.
+	 */
+	case SEN_bpf:
+	case SEN_creat:
+	case SEN_epoll_create:
+	case SEN_epoll_create1:
+	case SEN_eventfd2:
+	case SEN_eventfd:
+	case SEN_fanotify_init:
+	case SEN_inotify_init1:
+	case SEN_memfd_create:
+	case SEN_open:
+	case SEN_perf_event_open:
+	case SEN_pipe:
+	case SEN_pipe2:
+	case SEN_printargs:
+	case SEN_socket:
+	case SEN_socketpair:
+	case SEN_timerfd_create:
+	case SEN_userfaultfd:
+		return false;
+	}
+	return is_fd_in_set(tcp, tcp->u_arg[0], set);
 }
 
 void

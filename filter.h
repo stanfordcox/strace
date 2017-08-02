@@ -39,6 +39,8 @@ void parse_set(const char *const, struct number_set *const,
 	       string_to_uint_func, const char *const);
 void parse_inject_common_args(char *, struct inject_opts *, const char *delim,
 			      const bool fault_tokens_only);
+typedef bool (*match_fd_func)(struct tcb *, int, void *);
+int match_fd_common(struct tcb *, match_fd_func, void *);
 
 /* filter api */
 struct filter* add_filter_to_array(struct filter **, unsigned int *nfilters,
