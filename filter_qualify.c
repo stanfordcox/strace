@@ -38,15 +38,7 @@ struct number_set {
 	bool not;
 };
 
-struct number_set read_set;
-struct number_set write_set;
 struct number_set signal_set;
-
-static struct number_set abbrev_set[SUPPORTED_PERSONALITIES];
-static struct number_set inject_set[SUPPORTED_PERSONALITIES];
-static struct number_set raw_set[SUPPORTED_PERSONALITIES];
-static struct number_set trace_set[SUPPORTED_PERSONALITIES];
-static struct number_set verbose_set[SUPPORTED_PERSONALITIES];
 
 static int
 find_errno_by_name(const char *name)
@@ -156,174 +148,168 @@ parse_inject_token(const char *const token, struct inject_opts *const fopts,
 	return true;
 }
 
-static char *
-parse_inject_expression(const char *const s, char **buf,
-			struct inject_opts *const fopts,
-			const bool fault_tokens_only)
+void
+parse_inject_common_args(char *str, struct inject_opts *const opts,
+			 const char *delim, const bool fault_tokens_only)
 {
 	char *saveptr = NULL;
-	char *name = NULL;
 	char *token;
 
-	*buf = xstrdup(s);
-	for (token = strtok_r(*buf, ":", &saveptr); token;
-	     token = strtok_r(NULL, ":", &saveptr)) {
-		if (!name)
-			name = token;
-		else if (!parse_inject_token(token, fopts, fault_tokens_only))
-			goto parse_error;
+	opts->first = 1;
+	opts->step = 1;
+	opts->rval = INJECT_OPTS_RVAL_DEFAULT;
+	opts->signo = 0;
+	opts->init = false;
+
+	for (token = strtok_r(str, delim, &saveptr); token;
+	     token = strtok_r(NULL, delim, &saveptr)) {
+		if (!parse_inject_token(token, opts, fault_tokens_only))
+			return;
 	}
 
-	if (name)
-		return name;
-
-parse_error:
-	free(*buf);
-	return *buf = NULL;
+	/* If neither of retval, error, or signal is specified, then ... */
+	if (opts->rval == INJECT_OPTS_RVAL_DEFAULT && !opts->signo) {
+		if (fault_tokens_only) {
+			/* in fault= syntax the default error code is ENOSYS. */
+			opts->rval = -ENOSYS;
+		} else {
+			/* in inject= syntax this is not allowed. */
+			return;
+		}
+	}
+	opts->init = true;
 }
 
 static void
-qualify_read(const char *const str)
+parse_read(const char *const str)
 {
-	qualify_tokens(str, &read_set, string_to_uint, "descriptor");
+	struct filter_action *action = find_or_add_action("read");
+	struct filter *filter = create_filter(action, "fd");
+
+	parse_filter(filter, str);
+	set_qualify_mode(action);
 }
 
 static void
-qualify_write(const char *const str)
+parse_write(const char *const str)
 {
-	qualify_tokens(str, &write_set, string_to_uint, "descriptor");
+	struct filter_action *action = find_or_add_action("write");
+	struct filter *filter = create_filter(action, "fd");
+
+	parse_filter(filter, str);
+	set_qualify_mode(action);
 }
 
 static void
 qualify_signals(const char *const str)
 {
-	qualify_tokens(str, &signal_set, sigstr_to_uint, "signal");
+	parse_set(str, &signal_set, sigstr_to_uint, "signal");
 }
 
 static void
-qualify_trace(const char *const str)
+parse_trace(const char *const str)
 {
-	qualify_syscall_tokens(str, trace_set, "system call");
+	struct filter_action *action = find_or_add_action("trace");
+	struct filter *filter = create_filter(action, "syscall");
+
+	parse_filter(filter, str);
+	set_qualify_mode(action);
 }
 
 static void
-qualify_abbrev(const char *const str)
+parse_abbrev(const char *const str)
 {
-	qualify_syscall_tokens(str, abbrev_set, "system call");
+	struct filter_action *action = find_or_add_action("abbrev");
+	struct filter *filter = create_filter(action, "syscall");
+
+	parse_filter(filter, str);
+	set_qualify_mode(action);
 }
 
 static void
-qualify_verbose(const char *const str)
+parse_verbose(const char *const str)
 {
-	qualify_syscall_tokens(str, verbose_set, "system call");
+	struct filter_action *action = find_or_add_action("verbose");
+	struct filter *filter = create_filter(action, "syscall");
+
+	parse_filter(filter, str);
+	set_qualify_mode(action);
 }
 
 static void
-qualify_raw(const char *const str)
+parse_raw(const char *const str)
 {
-	qualify_syscall_tokens(str, raw_set, "system call");
+	struct filter_action *action = find_or_add_action("raw");
+	struct filter *filter = create_filter(action, "syscall");
+
+	parse_filter(filter, str);
+	set_qualify_mode(action);
 }
 
 static void
-qualify_inject_common(const char *const str,
-		      const bool fault_tokens_only,
-		      const char *const description)
+parse_inject_common(const char *const str, const bool fault_tokens_only,
+		    const char *const description)
 {
-	struct inject_opts opts = {
-		.first = 1,
-		.step = 1,
-		.rval = INJECT_OPTS_RVAL_DEFAULT,
-		.signo = 0
-	};
-	char *buf = NULL;
-	char *name = parse_inject_expression(str, &buf, &opts, fault_tokens_only);
-	if (!name) {
-		error_msg_and_die("invalid %s '%s'", description, str);
-	}
+	struct inject_opts *opts = xmalloc(sizeof(struct inject_opts));
+	char *buf = xstrdup(str);
+	struct filter_action *action;
+	struct filter *filter;
+	char *args = strchr(buf, ':');
 
-	/* If neither of retval, error, or signal is specified, then ... */
-	if (opts.rval == INJECT_OPTS_RVAL_DEFAULT && !opts.signo) {
-		if (fault_tokens_only) {
-			/* in fault= syntax the default error code is ENOSYS. */
-			opts.rval = -ENOSYS;
-		} else {
-			/* in inject= syntax this is not allowed. */
-			error_msg_and_die("invalid %s '%s'", description, str);
-		}
-	}
+	if (args)
+		*(args++) = '\0';
 
-	struct number_set tmp_set[SUPPORTED_PERSONALITIES];
-	memset(tmp_set, 0, sizeof(tmp_set));
-	qualify_syscall_tokens(name, tmp_set, description);
-
+	action = find_or_add_action(fault_tokens_only ? "fault" : "inject");
+	filter = create_filter(action, "syscall");
+	parse_filter(filter, buf);
+	set_qualify_mode(action);
+	parse_inject_common_args(args, opts, ":", fault_tokens_only);
+	if (!opts->init)
+		error_msg_and_die("invalid %s '%s'", description,
+				  args ? args : "");
 	free(buf);
-
-	/*
-	 * Initialize inject_vec accourding to tmp_set.
-	 * Merge tmp_set into inject_set.
-	 */
-	unsigned int p;
-	for (p = 0; p < SUPPORTED_PERSONALITIES; ++p) {
-		if (!tmp_set[p].nslots && !tmp_set[p].not) {
-			continue;
-		}
-
-		if (!inject_vec[p]) {
-			inject_vec[p] = xcalloc(nsyscall_vec[p],
-					       sizeof(*inject_vec[p]));
-		}
-
-		unsigned int i;
-		for (i = 0; i < nsyscall_vec[p]; ++i) {
-			if (is_number_in_set(i, &tmp_set[p])) {
-				add_number_to_set(i, &inject_set[p]);
-				inject_vec[p][i] = opts;
-			}
-		}
-
-		free(tmp_set[p].vec);
-	}
+	set_filter_action_priv_data(action, opts);
 }
 
 static void
-qualify_fault(const char *const str)
+parse_fault(const char *const str)
 {
-	qualify_inject_common(str, true, "fault argument");
+	parse_inject_common(str, true, "fault argument");
 }
 
 static void
-qualify_inject(const char *const str)
+parse_inject(const char *const str)
 {
-	qualify_inject_common(str, false, "inject argument");
+	parse_inject_common(str, false, "inject argument");
 }
 
 static const struct qual_options {
 	const char *name;
 	void (*qualify)(const char *);
 } qual_options[] = {
-	{ "trace",	qualify_trace	},
-	{ "t",		qualify_trace	},
-	{ "abbrev",	qualify_abbrev	},
-	{ "a",		qualify_abbrev	},
-	{ "verbose",	qualify_verbose	},
-	{ "v",		qualify_verbose	},
-	{ "raw",	qualify_raw	},
-	{ "x",		qualify_raw	},
+	{ "trace",	parse_trace	},
+	{ "t",		parse_trace	},
+	{ "abbrev",	parse_abbrev	},
+	{ "a",		parse_abbrev	},
+	{ "verbose",	parse_verbose	},
+	{ "v",		parse_verbose	},
+	{ "raw",	parse_raw	},
+	{ "x",		parse_raw	},
 	{ "signal",	qualify_signals	},
 	{ "signals",	qualify_signals	},
 	{ "s",		qualify_signals	},
-	{ "read",	qualify_read	},
-	{ "reads",	qualify_read	},
-	{ "r",		qualify_read	},
-	{ "write",	qualify_write	},
-	{ "writes",	qualify_write	},
-	{ "w",		qualify_write	},
-	{ "fault",	qualify_fault	},
-	{ "inject",	qualify_inject	},
+	{ "read",	parse_read	},
+	{ "reads",	parse_read	},
+	{ "r",		parse_read	},
+	{ "write",	parse_write	},
+	{ "writes",	parse_write	},
+	{ "w",		parse_write	},
+	{ "fault",	parse_fault	},
+	{ "inject",	parse_inject	},
 };
 
 void
-qualify(const char *str)
+parse_qualify_filter(const char *str)
 {
 	const struct qual_options *opt = qual_options;
 	unsigned int i;
@@ -341,19 +327,4 @@ qualify(const char *str)
 	}
 
 	opt->qualify(str);
-}
-
-unsigned int
-qual_flags(const unsigned int scno)
-{
-	return	(is_number_in_set(scno, &trace_set[current_personality])
-		   ? QUAL_TRACE : 0)
-		| (is_number_in_set(scno, &abbrev_set[current_personality])
-		   ? QUAL_ABBREV : 0)
-		| (is_number_in_set(scno, &verbose_set[current_personality])
-		   ? QUAL_VERBOSE : 0)
-		| (is_number_in_set(scno, &raw_set[current_personality])
-		   ? QUAL_RAW : 0)
-		| (is_number_in_set(scno, &inject_set[current_personality])
-		   ? QUAL_INJECT : 0);
 }

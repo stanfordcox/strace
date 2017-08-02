@@ -28,11 +28,38 @@
 # define STRACE_FILTER_H
 # include "defs.h"
 
-typedef int (*string_to_uint_func)(const char *);
+struct filter;
 
-void add_number_to_set(const unsigned int, struct number_set *const);
-void qualify_tokens(const char *const, struct number_set *const,
-                    string_to_uint_func, const char *const);
-void qualify_syscall_tokens(const char *const, struct number_set *const,
-                            const char *const);
+struct filter_action;
+
+struct bool_expression;
+
+typedef int (*string_to_uint_func)(const char *);
+void parse_set(const char *const, struct number_set *const,
+	       string_to_uint_func, const char *const);
+void parse_inject_common_args(char *, struct inject_opts *, const char *delim,
+			      const bool fault_tokens_only);
+
+/* filter api */
+struct filter* add_filter_to_array(struct filter **, unsigned int *nfilters,
+				   const char *name);
+void parse_filter(struct filter *, const char *str);
+void run_filters(struct tcb *, struct filter *, unsigned int, bool *);
+void free_filter(struct filter *);
+void *get_filter_priv_data(struct filter *);
+void set_filter_priv_data(struct filter *, void *);
+void set_filters_qualify_mode(struct filter **, unsigned int *nfilters);
+
+/* filter action api */
+struct filter *create_filter(struct filter_action *, const char *name);
+struct filter_action *find_or_add_action(const char *);
+void *get_filter_action_priv_data(struct filter_action *);
+void set_filter_action_priv_data(struct filter_action *, void *);
+void set_qualify_mode(struct filter_action *);
+
+/* filter expression api */
+struct bool_expression *create_expression();
+bool run_expression(struct bool_expression *, bool *, unsigned int);
+void set_expression_qualify_mode(struct bool_expression *);
+
 #endif

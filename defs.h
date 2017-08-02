@@ -197,6 +197,7 @@ struct inject_opts {
 	uint16_t step;
 	uint16_t signo;
 	int rval;
+	bool init;
 };
 
 #define MAX_ERRNO_VALUE			4095
@@ -266,8 +267,8 @@ struct tcb {
 #define QUAL_RAW	0x008	/* print all args in hex for this syscall */
 #define QUAL_INJECT	0x010	/* tamper with this system call on purpose */
 #define QUAL_SIGNAL	0x100	/* report events with this signal */
-#define QUAL_READ	0x200	/* dump data read from this file descriptor */
-#define QUAL_WRITE	0x400	/* dump data written to this file descriptor */
+#define QUAL_READ	0x200	/* dump data read in this syscall */
+#define QUAL_WRITE	0x400	/* dump data written in this syscall */
 
 #define DEFAULT_QUAL_FLAGS (QUAL_TRACE | QUAL_ABBREV | QUAL_VERBOSE)
 
@@ -276,6 +277,8 @@ struct tcb {
 #define syserror(tcp)	((tcp)->u_error != 0)
 #define verbose(tcp)	((tcp)->qual_flg & QUAL_VERBOSE)
 #define abbrev(tcp)	((tcp)->qual_flg & QUAL_ABBREV)
+#define dump_read(tcp)	((tcp)->qual_flg & QUAL_READ)
+#define dump_write(tcp)	((tcp)->qual_flg & QUAL_WRITE)
 #define filtered(tcp)	((tcp)->flags & TCB_FILTERED)
 #define hide_log(tcp)	((tcp)->flags & TCB_HIDE_LOG)
 
@@ -674,13 +677,12 @@ print_struct_statfs64(struct tcb *, kernel_ulong_t addr, kernel_ulong_t size);
 extern void print_ifindex(unsigned int);
 
 struct number_set;
-extern struct number_set read_set;
-extern struct number_set write_set;
 extern struct number_set signal_set;
 
 extern bool is_number_in_set(unsigned int number, const struct number_set *);
-extern void qualify(const char *);
-extern unsigned int qual_flags(const unsigned int);
+extern void filtering_parsing_finish(void);
+extern void filter_syscall(struct tcb *);
+extern void parse_qualify_filter(const char *);
 
 #define DECL_IOCTL(name)						\
 extern int								\
