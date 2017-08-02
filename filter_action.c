@@ -90,6 +90,7 @@ struct filter_action {
 	void *_priv_data;
 };
 
+static int default_flags = DEFAULT_QUAL_FLAGS;
 static struct filter_action *filter_actions;
 static unsigned int nfilter_actions;
 
@@ -117,7 +118,14 @@ filtering_parsing_finish(void)
 	unsigned int maxfilters = 0;
 	unsigned int i;
 
+	/* Init trace action if pathtracing is enabled */
+	if (tracing_paths && (default_flags & QUAL_TRACE)) {
+		parse_qualify_filter("trace=all");
+	}
+
 	/* Sort actions by priority */
+	if (nfilter_actions == 0)
+		return;
 	qsort(filter_actions, nfilter_actions, sizeof(struct filter_action),
 	      &compare_action_priority);
 
@@ -128,6 +136,22 @@ filtering_parsing_finish(void)
 	}
 	variables_buf = xcalloc(maxfilters, sizeof(bool));
 }
+static void
+update_default_flags(const char *name)
+{
+	if ((default_flags & QUAL_TRACE) && !strcmp(name, "trace")) {
+		default_flags &= ~QUAL_TRACE;
+		return;
+	} else if ((default_flags & QUAL_ABBREV) && !strcmp(name, "abbrev")) {
+		default_flags &= ~QUAL_ABBREV;
+		return;
+	} else if ((default_flags & QUAL_VERBOSE) && !strcmp(name, "verbose")) {
+		default_flags &= ~QUAL_VERBOSE;
+		return;
+	}
+
+}
+
 
 static const struct filter_action_type *
 lookup_filter_action_type(const char *str)
@@ -146,6 +170,7 @@ add_action(const struct filter_action_type *type)
 {
 	struct filter_action *action;
 
+	update_default_flags(type->name);
 	filter_actions = xreallocarray(filter_actions, ++nfilter_actions,
 				       sizeof(struct filter_action));
 	action = &filter_actions[nfilter_actions - 1];
@@ -203,6 +228,7 @@ filter_syscall(struct tcb *tcp)
 {
 	unsigned int i;
 
+	tcp->qual_flg |= default_flags;
 	for (i = 0; i < nfilter_actions; ++i)
 		run_filter_action(tcp, &filter_actions[i]);
 }
