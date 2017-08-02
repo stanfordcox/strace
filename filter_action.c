@@ -44,6 +44,10 @@ DECL_FILTER_ACTION(verbose);
 # ifdef USE_LIBUNWIND
 DECL_FILTER_ACTION(stacktrace);
 # endif
+# ifdef USE_LUAJIT
+DECL_FILTER_ACTION(hook_entry);
+DECL_FILTER_ACTION(hook_exit);
+# endif
 #undef DECL_FILTER_ACTION
 
 extern bool is_traced(struct tcb *);
@@ -82,6 +86,10 @@ static const struct filter_action_type {
 	FILTER_ACTION_TYPE(verbose,	1,	null,	is_traced),
 # ifdef USE_LIBUNWIND
 	FILTER_ACTION_TYPE(stacktrace,	1,	null,	is_traced),
+# endif
+# ifdef USE_LUAJIT
+	FILTER_ACTION_TYPE(hook_entry,	1,	null,	is_traced),
+	FILTER_ACTION_TYPE(hook_exit,	1,	null,	is_traced),
 # endif
 };
 #undef FILTER_ACTION_TYPE
@@ -250,6 +258,8 @@ filter_syscall(struct tcb *tcp)
 	unsigned int i;
 
 	tcp->qual_flg |= default_flags;
+	/* Kludge for supporting existing Lua monitor() interface */
+	tcp->qual_flg |= qual_flags(tcp->scno);
 	for (i = 0; i < nfilter_actions; ++i)
 		run_filter_action(tcp, &filter_actions[i]);
 }

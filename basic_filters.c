@@ -31,6 +31,31 @@
 #include "filter.h"
 #include "syscall.h"
 
+const struct syscall_class syscall_classes[] = {
+	{ "desc",	TRACE_DESC	},
+	{ "file",	TRACE_FILE	},
+	{ "memory",	TRACE_MEMORY	},
+	{ "process",	TRACE_PROCESS	},
+	{ "signal",	TRACE_SIGNAL	},
+	{ "ipc",	TRACE_IPC	},
+	{ "network",	TRACE_NETWORK	},
+	{ "%desc",	TRACE_DESC	},
+	{ "%file",	TRACE_FILE	},
+	{ "%memory",	TRACE_MEMORY	},
+	{ "%process",	TRACE_PROCESS	},
+	{ "%signal",	TRACE_SIGNAL	},
+	{ "%ipc",	TRACE_IPC	},
+	{ "%network",	TRACE_NETWORK	},
+	{ "%stat",	TRACE_STAT	},
+	{ "%lstat",	TRACE_LSTAT	},
+	{ "%fstat",	TRACE_FSTAT	},
+	{ "%%stat",	TRACE_STAT_LIKE	},
+	{ "%statfs",	TRACE_STATFS	},
+	{ "%fstatfs",	TRACE_FSTATFS	},
+	{ "%%statfs",	TRACE_STATFS_LIKE	},
+	{}
+};
+
 typedef unsigned int number_slot_t;
 #define BITS_PER_SLOT (sizeof(number_slot_t) * 8)
 
@@ -39,6 +64,11 @@ struct number_set {
 	unsigned int nslots;
 	bool not;
 };
+
+#ifdef USE_LUAJIT
+static struct number_set hook_entry_set[SUPPORTED_PERSONALITIES];
+static struct number_set hook_exit_set[SUPPORTED_PERSONALITIES];
+#endif
 
 static void
 number_setbit(const unsigned int i, number_slot_t *const vec)
@@ -144,37 +174,10 @@ parse_syscall_regex(const char *s, struct number_set *set)
 static unsigned int
 lookup_class(const char *s)
 {
-	static const struct {
-		const char *name;
-		unsigned int value;
-	} syscall_class[] = {
-		{ "desc",	TRACE_DESC	},
-		{ "file",	TRACE_FILE	},
-		{ "memory",	TRACE_MEMORY	},
-		{ "process",	TRACE_PROCESS	},
-		{ "signal",	TRACE_SIGNAL	},
-		{ "ipc",	TRACE_IPC	},
-		{ "network",	TRACE_NETWORK	},
-		{ "%desc",	TRACE_DESC	},
-		{ "%file",	TRACE_FILE	},
-		{ "%memory",	TRACE_MEMORY	},
-		{ "%process",	TRACE_PROCESS	},
-		{ "%signal",	TRACE_SIGNAL	},
-		{ "%ipc",	TRACE_IPC	},
-		{ "%network",	TRACE_NETWORK	},
-		{ "%stat",	TRACE_STAT	},
-		{ "%lstat",	TRACE_LSTAT	},
-		{ "%fstat",	TRACE_FSTAT	},
-		{ "%%stat",	TRACE_STAT_LIKE	},
-		{ "%statfs",	TRACE_STATFS	},
-		{ "%fstatfs",	TRACE_FSTATFS	},
-		{ "%%statfs",	TRACE_STATFS_LIKE	},
-	};
-
-	unsigned int i;
-	for (i = 0; i < ARRAY_SIZE(syscall_class); ++i) {
-		if (strcmp(s, syscall_class[i].name) == 0) {
-			return syscall_class[i].value;
+	const struct syscall_class *c;
+	for (c = syscall_classes; c->name; ++c) {
+		if (strcmp(s, c->name) == 0) {
+			return c->value;
 		}
 	}
 
@@ -541,3 +544,50 @@ free_path_filter(void *_priv_data)
 	free(set);
 	return;
 }
+
+unsigned int
+qual_flags(const unsigned int scno)
+{
+	return 0
+#ifdef USE_LUAJIT
+		| (is_number_in_set(scno, &hook_entry_set[current_personality])
+		  ? QUAL_HOOK_ENTRY : 0)
+		| (is_number_in_set(scno, &hook_exit_set[current_personality])
+		  ? QUAL_HOOK_EXIT : 0)
+#endif
+		;
+}
+
+#ifdef USE_LUAJIT
+static void
+make_number_set_universal(struct number_set *const set)
+{
+	free(set->vec);
+	*set = (struct number_set) {
+		.vec = NULL,
+		.nslots = 0,
+		.not = true,
+	};
+}
+
+void
+set_hook_qual(unsigned int scno, unsigned int pers, bool entry_hook, bool exit_hook)
+{
+	if (entry_hook)
+		add_number_to_set(scno, &hook_entry_set[pers]);
+	if (exit_hook)
+		add_number_to_set(scno, &hook_exit_set[pers]);
+}
+
+void
+set_hook_qual_all(bool entry_hook, bool exit_hook)
+{
+	unsigned p;
+	for (p = 0; p < SUPPORTED_PERSONALITIES; ++p) {
+		if (entry_hook)
+			make_number_set_universal(&hook_entry_set[p]);
+		if (exit_hook)
+			make_number_set_universal(&hook_exit_set[p]);
+	}
+}
+#endif

@@ -145,3 +145,15 @@ apply_verbose(struct tcb *tcp, void *_priv_data)
 {
 	tcp->qual_flg |= QUAL_VERBOSE;
 }
+
+void
+apply_hook_entry(struct tcb *tcp, void *_priv_data)
+{
+	tcp->qual_flg |= QUAL_HOOK_ENTRY;
+}
+
+void
+apply_hook_exit(struct tcb *tcp, void *_priv_data)
+{
+	tcp->qual_flg |= QUAL_HOOK_EXIT;
+}
