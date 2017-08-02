@@ -105,6 +105,7 @@ check_PROGRAMS = $(PURE_EXECUTABLES) \
 	ioctl_nsfs \
 	ioctl_rtc-v \
 	ksysent \
+	lua \
 	mmsg-silent \
 	mmsg_name-v \
 	msg_control-v \
@@ -182,6 +183,12 @@ if USE_LIBUNWIND
 LIBUNWIND_TESTS = strace-k.test
 else
 LIBUNWIND_TESTS =
+endif
+
+if USE_LUAJIT
+LUAJIT_TESTS = lua-basics.test lua-qual.test lua-tampering.test
+else
+LUAJIT_TESTS =
 endif
 
 DECODER_TESTS = \
@@ -294,7 +301,7 @@ MISC_TESTS = \
 	threads-execve.test \
 	# end of MISC_TESTS
 
-TESTS = $(GEN_TESTS) $(DECODER_TESTS) $(MISC_TESTS) $(LIBUNWIND_TESTS)
+TESTS = $(GEN_TESTS) $(DECODER_TESTS) $(MISC_TESTS) $(LIBUNWIND_TESTS) $(LUAJIT_TESTS)
 
 XFAIL_TESTS_ =
 XFAIL_TESTS_m32 = $(LIBUNWIND_TESTS)
@@ -331,6 +338,10 @@ EXTRA_DIST = \
 	ipc_msgbuf.expected \
 	ksysent.sed \
 	lstatx.c \
+	lua.sh \
+	lua-basics.test \
+	lua-qual.test \
+	lua-tampering.test \
 	match.awk \
 	net.expected \
 	netlink_sock_diag-v.sh \
