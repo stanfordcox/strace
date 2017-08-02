@@ -120,7 +120,7 @@ filtering_parsing_finish(void)
 
 	/* Init trace action if pathtracing is enabled */
 	if (tracing_paths && (default_flags & QUAL_TRACE)) {
-		parse_qualify_filter("trace=all");
+		filtering_parse("trace=all");
 	}
 
 	/* Sort actions by priority */
@@ -198,6 +198,17 @@ find_or_add_action(const char *name)
 			return &filter_actions[i];
 	}
 	return add_action(type);
+}
+
+void
+parse_filter_action(const char *action_name, const char *expr, const char *args)
+{
+	struct filter_action *action = find_or_add_action(action_name);
+	parse_filter_expression(action->expr, expr, action, action->nfilters);
+	if (args && action->type->parse_args == &parse_null)
+		error_msg("%s action takes no arguments: '%s'",
+			  action->type->name, args);
+	action->_priv_data = action->type->parse_args(args);
 }
 
 static void

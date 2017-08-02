@@ -181,111 +181,123 @@ parse_inject_common_args(char *str, struct inject_opts *const opts,
 }
 
 static void
-parse_read(const char *const str)
+parse_read(const char *const main_part, const char *const args)
 {
 	struct filter_action *action = find_or_add_action("read");
 	struct filter *filter = create_filter(action, "fd");
 
-	parse_filter(filter, str);
+	parse_filter(filter, main_part);
+	if (args)
+		error_msg("read action takes no arguments: '%s'", args);
 	set_qualify_mode(action);
 }
 
 static void
-parse_write(const char *const str)
+parse_write(const char *const main_part, const char *const args)
 {
 	struct filter_action *action = find_or_add_action("write");
 	struct filter *filter = create_filter(action, "fd");
 
-	parse_filter(filter, str);
+	parse_filter(filter, main_part);
+	if (args)
+		error_msg("write action takes no arguments: '%s'", args);
 	set_qualify_mode(action);
 }
 
 static void
-qualify_signals(const char *const str)
+qualify_signals(const char *const main_part, const char *const args)
 {
-	parse_set(str, &signal_set, sigstr_to_uint, "signal");
+	parse_set(main_part, &signal_set, sigstr_to_uint, "signal");
+	if (args)
+		error_msg("signal action takes no arguments: '%s'", args);
 }
 
 static void
-parse_trace(const char *const str)
+parse_trace(const char *const main_part, const char *const args)
 {
 	struct filter_action *action = find_or_add_action("trace");
 	struct filter *filter = create_filter(action, "syscall");
 
-	parse_filter(filter, str);
+	parse_filter(filter, main_part);
+	if (args)
+		error_msg("trace action takes no arguments: '%s'", args);
 	set_qualify_mode(action);
 }
 
 static void
-parse_abbrev(const char *const str)
+parse_abbrev(const char *const main_part, const char *const args)
 {
 	struct filter_action *action = find_or_add_action("abbrev");
 	struct filter *filter = create_filter(action, "syscall");
 
-	parse_filter(filter, str);
+	parse_filter(filter, main_part);
+	if (args)
+		error_msg("abbrev action takes no arguments: '%s'", args);
 	set_qualify_mode(action);
 }
 
 static void
-parse_verbose(const char *const str)
+parse_verbose(const char *const main_part, const char *const args)
 {
 	struct filter_action *action = find_or_add_action("verbose");
 	struct filter *filter = create_filter(action, "syscall");
 
-	parse_filter(filter, str);
+	parse_filter(filter, main_part);
+	if (args)
+		error_msg("verbose action takes no arguments: '%s'", args);
 	set_qualify_mode(action);
 }
 
 static void
-parse_raw(const char *const str)
+parse_raw(const char *const main_part, const char *const args)
 {
 	struct filter_action *action = find_or_add_action("raw");
 	struct filter *filter = create_filter(action, "syscall");
 
-	parse_filter(filter, str);
+	parse_filter(filter, main_part);
+	if (args)
+		error_msg("raw action takes no arguments: '%s'", args);
 	set_qualify_mode(action);
 }
 
 static void
-parse_inject_common(const char *const str, const bool fault_tokens_only,
-		    const char *const description)
+parse_inject_common(const char *const main_part, const char *const args,
+		    const bool fault_tokens_only, const char *const description)
 {
 	struct inject_opts *opts = xmalloc(sizeof(struct inject_opts));
-	char *buf = xstrdup(str);
+	char *buf = args ? xstrdup(args) : NULL;
 	struct filter_action *action;
 	struct filter *filter;
-	char *args = strchr(buf, ':');
-
-	if (args)
-		*(args++) = '\0';
 
 	action = find_or_add_action(fault_tokens_only ? "fault" : "inject");
 	filter = create_filter(action, "syscall");
-	parse_filter(filter, buf);
+	parse_filter(filter, main_part);
 	set_qualify_mode(action);
-	parse_inject_common_args(args, opts, ":", fault_tokens_only);
-	if (!opts->init)
+	parse_inject_common_args(buf, opts, ":", fault_tokens_only);
+	if (!opts->init) {
 		error_msg_and_die("invalid %s '%s'", description,
 				  args ? args : "");
-	free(buf);
+	}
+	if (buf)
+		free(buf);
 	set_filter_action_priv_data(action, opts);
 }
 
 static void
-parse_fault(const char *const str)
+parse_fault(const char *const main_part, const char *const args)
 {
-	parse_inject_common(str, true, "fault argument");
+	parse_inject_common(main_part, args, true, "fault argument");
 }
 
 static void
-parse_inject(const char *const str)
+parse_inject(const char *const main_part, const char *const args)
 {
-	parse_inject_common(str, false, "inject argument");
+	parse_inject_common(main_part, args, false, "inject argument");
 }
 
 static const struct qual_options {
 	const char *name;
-	void (*qualify)(const char *);
+	void (*qualify)(const char *, const char *);
 } qual_options[] = {
 	{ "trace",	parse_trace	},
 	{ "t",		parse_trace	},
@@ -309,22 +321,20 @@ static const struct qual_options {
 };
 
 void
-parse_qualify_filter(const char *str)
+parse_qualify_action(const char *action_name, const char *main_part,
+		     const char *args)
 {
-	const struct qual_options *opt = qual_options;
+	const struct qual_options *opt = NULL;
 	unsigned int i;
 
 	for (i = 0; i < ARRAY_SIZE(qual_options); ++i) {
-		const char *name = qual_options[i].name;
-		const size_t len = strlen(name);
-		const char *val = str_strip_prefix_len(str, name, len);
-
-		if (val == str || *val != '=')
-			continue;
-		str = val + 1;
-		opt = &qual_options[i];
-		break;
+		if (!strcmp(action_name, qual_options[i].name)) {
+			opt = &qual_options[i];
+			break;
+		}
 	}
 
-	opt->qualify(str);
+	if (!opt)
+		error_msg_and_die("invalid filter action '%s'", action_name);
+	opt->qualify(main_part, args);
 }

@@ -55,6 +55,7 @@ void set_filters_qualify_mode(struct filter **, unsigned int *nfilters);
 /* filter action api */
 struct filter *create_filter(struct filter_action *, const char *name);
 struct filter_action *find_or_add_action(const char *);
+void parse_filter_action(const char *, const char *, const char *);
 void *get_filter_action_priv_data(struct filter_action *);
 void set_filter_action_priv_data(struct filter_action *, void *);
 void set_qualify_mode(struct filter_action *);
@@ -63,5 +64,9 @@ void set_qualify_mode(struct filter_action *);
 struct bool_expression *create_expression();
 bool run_expression(struct bool_expression *, bool *, unsigned int);
 void set_expression_qualify_mode(struct bool_expression *);
+void parse_filter_expression(struct bool_expression *, const char *,
+			     struct filter_action *, unsigned int);
+
+void parse_qualify_action(const char *, const char *, const char *);
 
 #endif

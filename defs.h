@@ -682,7 +682,7 @@ extern struct number_set signal_set;
 extern bool is_number_in_set(unsigned int number, const struct number_set *);
 extern void filtering_parsing_finish(void);
 extern void filter_syscall(struct tcb *);
-extern void parse_qualify_filter(const char *);
+extern void filtering_parse(const char *);
 
 #define DECL_IOCTL(name)						\
 extern int								\

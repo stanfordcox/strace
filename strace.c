@@ -1657,7 +1657,7 @@ init(int argc, char *argv[])
 #if DEFAULT_QUAL_FLAGS != (QUAL_TRACE | QUAL_ABBREV | QUAL_VERBOSE)
 # error Bug in DEFAULT_QUAL_FLAGS
 #endif
-	parse_qualify_filter("signal=all");
+	filtering_parse("signal=all");
 	while ((c = getopt(argc, argv,
 		"+b:cCdfFhiqrtTvVwxyz"
 #ifdef USE_LIBUNWIND
@@ -1724,7 +1724,7 @@ init(int argc, char *argv[])
 			show_fd_path++;
 			break;
 		case 'v':
-			parse_qualify_filter("abbrev=none");
+			filtering_parse("abbrev=none");
 			break;
 		case 'V':
 			print_version();
@@ -1739,7 +1739,7 @@ init(int argc, char *argv[])
 				error_opt_arg(c, optarg);
 			break;
 		case 'e':
-			parse_qualify_filter(optarg);
+			filtering_parse(optarg);
 			break;
 		case 'o':
 			outfname = optarg;
