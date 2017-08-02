@@ -1,3 +1,6 @@
+#ifndef STRACE_GDBSERVER_PROTOCOL_H
+#define STRACE_GDBSERVER_PROTOCOL_H
+
 /* Simple interface of a GDB remote protocol client.
  *
  * Copyright (c) 2015 Red Hat Inc.
@@ -67,3 +70,5 @@ char *gdb_xfer_read(struct gdb_conn *conn,
 
 int gdb_readlink(struct gdb_conn *conn, const char *linkpath,
         char *buf, unsigned bufsize);
+
+#endif /* !STRACE_GDBSERVER_PROTOCOL_H */
