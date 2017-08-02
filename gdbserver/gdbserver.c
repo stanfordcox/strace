@@ -27,15 +27,16 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "defs.h"
+
 #define _GNU_SOURCE 1
 #include <stdlib.h>
 #include <sys/wait.h>
 
-#include "defs.h"
-#include "protocol.h"
-#include "signals.h"
-#include "scno.h"
 #include "gdb_arch_defs.h"
+#include "protocol.h"
+#include "scno.h"
+#include "signals.h"
 
 /* FIXME jistone: export hacks */
 struct tcb *pid2tcb(int pid);
