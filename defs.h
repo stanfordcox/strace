@@ -269,6 +269,9 @@ struct tcb {
 #define QUAL_SIGNAL	0x100	/* report events with this signal */
 #define QUAL_READ	0x200	/* dump data read in this syscall */
 #define QUAL_WRITE	0x400	/* dump data written in this syscall */
+#ifdef USE_LIBUNWIND
+# define QUAL_STACKTRACE	0x800	/* do the stack trace */
+#endif
 
 #define DEFAULT_QUAL_FLAGS (QUAL_TRACE | QUAL_ABBREV | QUAL_VERBOSE)
 
@@ -279,6 +282,7 @@ struct tcb {
 #define abbrev(tcp)	((tcp)->qual_flg & QUAL_ABBREV)
 #define dump_read(tcp)	((tcp)->qual_flg & QUAL_READ)
 #define dump_write(tcp)	((tcp)->qual_flg & QUAL_WRITE)
+#define stacktrace(tcp)	((tcp)->qual_flg & QUAL_STACKTRACE) 
 #define filtered(tcp)	((tcp)->flags & TCB_FILTERED)
 #define hide_log(tcp)	((tcp)->flags & TCB_HIDE_LOG)
 
@@ -378,7 +382,7 @@ extern struct path_set {
 extern unsigned xflag;
 extern unsigned followfork;
 #ifdef USE_LIBUNWIND
-/* if this is true do the stack trace for every system call */
+/* if this is true do the initialization of stack trace mechanism */
 extern bool stack_trace_enabled;
 #endif
 extern unsigned ptrace_setoptions;

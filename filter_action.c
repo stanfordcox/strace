@@ -41,6 +41,9 @@ DECL_FILTER_ACTION(write);
 DECL_FILTER_ACTION(raw);
 DECL_FILTER_ACTION(abbrev);
 DECL_FILTER_ACTION(verbose);
+# ifdef USE_LIBUNWIND
+DECL_FILTER_ACTION(stacktrace);
+# endif
 #undef DECL_FILTER_ACTION
 
 extern bool is_traced(struct tcb *);
@@ -77,6 +80,9 @@ static const struct filter_action_type {
 	FILTER_ACTION_TYPE(raw,		1,	null,	is_traced),
 	FILTER_ACTION_TYPE(abbrev,	1,	null,	is_traced),
 	FILTER_ACTION_TYPE(verbose,	1,	null,	is_traced),
+# ifdef USE_LIBUNWIND
+	FILTER_ACTION_TYPE(stacktrace,	1,	null,	is_traced),
+# endif
 };
 #undef FILTER_ACTION_TYPE
 
@@ -148,6 +154,10 @@ update_default_flags(const char *name)
 	} else if ((default_flags & QUAL_VERBOSE) && !strcmp(name, "verbose")) {
 		default_flags &= ~QUAL_VERBOSE;
 		return;
+	} else if (!strcmp(name, "stacktrace")) {
+#ifdef USE_LIBUNWIND
+		stack_trace_enabled = true;
+#endif
 	}
 
 }

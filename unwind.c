@@ -589,3 +589,9 @@ unwind_capture_stacktrace(struct tcb *tcp)
 		DPRINTF("tcp=%p, queue=%p", "captured", tcp, tcp->queue->head);
 	}
 }
+
+void
+apply_stacktrace(struct tcb *tcp, void *_priv_data)
+{
+	tcp->qual_flg |= QUAL_STACKTRACE;
+}
