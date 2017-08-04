@@ -185,7 +185,7 @@ strerror(int err_no)
 	static char buf[sizeof("Unknown error %d") + sizeof(int)*3];
 
 	if (err_no < 1 || err_no >= sys_nerr) {
-		sprintf(buf, "Unknown error %d", err_no);
+		snprintf(buf, sizeof(buf),  "Unknown error %d", err_no);
 		return buf;
 	}
 	return sys_errlist[err_no];
@@ -674,7 +674,7 @@ newoutf(struct tcb *tcp)
 	tcp->outf = shared_log; /* if not -ff mode, the same file is for all */
 	if (followfork >= 2) {
 		char name[520 + sizeof(int) * 3];
-		sprintf(name, "%.512s.%u", outfname, tcp->pid);
+		snprintf(name, sizeof(name), "%.512s.%u", outfname, tcp->pid);
 		tcp->outf = strace_fopen(name);
 	}
 }
@@ -1008,12 +1008,13 @@ attach_tcb(struct tcb *const tcp)
 	newoutf(tcp);
 	debug_msg("attach to pid %d (main) succeeded", tcp->pid);
 
-	char procdir[sizeof("/proc/%d/task") + sizeof(int) * 3];
+	static const char task_path[] = "/proc/%d/task";
+	char procdir[sizeof(task_path) + sizeof(int) * 3];
 	DIR *dir;
 	unsigned int ntid = 0, nerr = 0;
 
 	if (followfork && tcp->pid != strace_child &&
-	    sprintf(procdir, "/proc/%d/task", tcp->pid) > 0 &&
+	    snprintf(procdir, sizeof(procdir), task_path, tcp->pid) > 0 &&
 	    (dir = opendir(procdir)) != NULL) {
 		struct_dirent *de;
 
@@ -1958,17 +1959,17 @@ print_debug_info(const int pid, int status)
 	strcpy(buf, "???");
 	if (WIFSIGNALED(status))
 #ifdef WCOREDUMP
-		sprintf(buf, "WIFSIGNALED,%ssig=%s",
+		snprintf(buf, sizeof(buf), "WIFSIGNALED,%ssig=%s",
 				WCOREDUMP(status) ? "core," : "",
 				signame(WTERMSIG(status)));
 #else
-		sprintf(buf, "WIFSIGNALED,sig=%s",
+		snprintf(buf, sizeof(buf), "WIFSIGNALED,sig=%s",
 				signame(WTERMSIG(status)));
 #endif
 	if (WIFEXITED(status))
-		sprintf(buf, "WIFEXITED,exitcode=%u", WEXITSTATUS(status));
+		snprintf(buf, sizeof(buf), "WIFEXITED,exitcode=%u", WEXITSTATUS(status));
 	if (WIFSTOPPED(status))
-		sprintf(buf, "WIFSTOPPED,sig=%s", signame(WSTOPSIG(status)));
+		snprintf(buf, sizeof(buf), "WIFSTOPPED,sig=%s", signame(WSTOPSIG(status)));
 	evbuf[0] = '\0';
 	if (event != 0) {
 		static const char *const event_names[] = {
@@ -1985,7 +1986,7 @@ print_debug_info(const int pid, int status)
 			e = event_names[event];
 		else if (event == PTRACE_EVENT_STOP)
 			e = "STOP";
-		sprintf(evbuf, ",EVENT_%s (%u)", e, event);
+		snprintf(evbuf, sizeof(evbuf), ",EVENT_%s (%u)", e, event);
 	}
 	error_msg("[wait(0x%06x) = %u] %s%s", status, pid, buf, evbuf);
 }
