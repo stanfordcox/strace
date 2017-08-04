@@ -2085,8 +2085,15 @@ maybe_allocate_tcb(const int pid, int status)
 		/* This can happen if a clone call used
 		 * CLONE_PTRACE itself.
 		 */
-		ptrace(PTRACE_CONT, pid, NULL, 0);
-		error_msg("Stop of unknown pid %u seen, PTRACE_CONTed it", pid);
+
+		unsigned int sig = WSTOPSIG(status);
+
+		if (sig == syscall_trap_sig)
+			sig = 0;
+
+		ptrace(PTRACE_DETACH, pid, NULL, (unsigned long) sig);
+		error_msg("Stop of unknown pid %u seen, PTRACE_DETACHed it "
+			  "with signal %s (%d)", pid, signame(sig), sig);
 		return NULL;
 	}
 }
