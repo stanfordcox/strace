@@ -701,6 +701,22 @@ This is incompatible with
 .BR \-c ,
 since no per-process counts are kept.
 .TP
+.BI \-A
+Accept new tracees (for example, if they have been created with
+.B CLONE_PTRACE
+option provided to
+.BR clone (2)
+system call or ones that have called
+.BR ptrace (2)
+system call with
+.B PTRACE_TRACEME
+command), even if neither of
+.BR \-f " or " \-ff
+options has been provided to
+.BR strace .
+If this option is not provided, such processes are detached by
+.BR strace .
+.TP
 .BI "\-I " interruptible
 When strace can be interrupted by signals (such as pressing ^C).
 1: no signals are blocked; 2: fatal signals are blocked while decoding syscall

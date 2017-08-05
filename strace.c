@@ -74,6 +74,7 @@ bool stack_trace_enabled;
 const unsigned int syscall_trap_sig = SIGTRAP | 0x80;
 
 cflag_t cflag = CFLAG_NONE;
+unsigned int accept_voluntary_tracees;
 unsigned int followfork;
 unsigned int ptrace_setoptions = PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEEXEC
 				 | PTRACE_O_TRACEEXIT;
@@ -1657,7 +1658,7 @@ init(int argc, char *argv[])
 		"k"
 #endif
 		"D"
-		"a:e:o:O:p:s:S:u:E:P:I:")) != EOF) {
+		"a:e:o:O:p:s:S:u:E:P:I:A")) != EOF) {
 		switch (c) {
 		case 'b':
 			if (strcmp(optarg, "execve") != 0)
@@ -1774,6 +1775,9 @@ init(int argc, char *argv[])
 			opt_intr = string_to_uint_upto(optarg, NUM_INTR_OPTS - 1);
 			if (opt_intr <= 0)
 				error_opt_arg(c, optarg);
+			break;
+		case 'A':
+			accept_voluntary_tracees = 1;
 			break;
 		default:
 			error_msg_and_help(NULL);
@@ -2073,8 +2077,11 @@ maybe_allocate_tcb(const int pid, int status)
 		error_msg("Exit of unknown pid %u ignored", pid);
 		return NULL;
 	}
-	if (followfork) {
-		/* We assume it's a fork/vfork/clone child */
+	if (followfork || accept_voluntary_tracees) {
+		/*
+		 * We assume it's a fork/vfork/clone child or a process which
+		 * just wants to be traced
+		 */
 		struct tcb *tcp = alloctcb(pid);
 		tcp->flags |= TCB_ATTACHED | TCB_STARTUP | post_attach_sigstop;
 		newoutf(tcp);
