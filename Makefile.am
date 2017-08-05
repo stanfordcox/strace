@@ -257,6 +257,7 @@ strace_SOURCES =	\
 	scsi.c		\
 	seccomp.c	\
 	sendfile.c	\
+	shorthand_def.h	\
 	sg_io_v3.c	\
 	sg_io_v4.c	\
 	shutdown.c	\
