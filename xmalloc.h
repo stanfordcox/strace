@@ -1,5 +1,9 @@
-/*
- * Copyright (c) 2015 Dmitry V. Levin <ldv@altlinux.org>
+/* This file contains wrapper functions working with memory, the wrapper
+ * just terminates program in case of lack of memory. This set of
+ * soubroutines can be used by various binaries included in the strace
+ * package.
+ *
+ * Copyright (c) 2001-2017 The strace developers.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -25,96 +29,17 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <stdbool.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdio.h>
+#ifndef STRACE_XMALLOC_H
+#define STRACE_XMALLOC_H
 
-#include "error_prints.h"
-#include "xmalloc.h"
+#include "gcc_compat.h"
 
-static void
-die_out_of_memory(void)
-{
-	static bool recursed;
+void *xcalloc(size_t nmemb, size_t size)
+	ATTRIBUTE_MALLOC ATTRIBUTE_ALLOC_SIZE((1, 2));
+void *xmalloc(size_t size) ATTRIBUTE_MALLOC ATTRIBUTE_ALLOC_SIZE((1));
+void *xreallocarray(void *ptr, size_t nmemb, size_t size)
+	ATTRIBUTE_ALLOC_SIZE((2, 3));
+char *xstrdup(const char *str) ATTRIBUTE_MALLOC;
+char *xstrndup(const char *str, size_t n) ATTRIBUTE_MALLOC;
 
-	if (recursed)
-		exit(1);
-	recursed = 1;
-
-	error_msg_and_die("Out of memory");
-}
-
-void *
-xmalloc(size_t size)
-{
-	void *p = malloc(size);
-
-	if (!p)
-		die_out_of_memory();
-
-	return p;
-}
-
-void *
-xcalloc(size_t nmemb, size_t size)
-{
-	void *p = calloc(nmemb, size);
-
-	if (!p)
-		die_out_of_memory();
-
-	return p;
-}
-
-#define HALF_SIZE_T	(((size_t) 1) << (sizeof(size_t) * 4))
-
-void *
-xreallocarray(void *ptr, size_t nmemb, size_t size)
-{
-	size_t bytes = nmemb * size;
-
-	if ((nmemb | size) >= HALF_SIZE_T &&
-	    size && bytes / size != nmemb)
-		die_out_of_memory();
-
-	void *p = realloc(ptr, bytes);
-
-	if (!p)
-		die_out_of_memory();
-
-	return p;
-}
-
-char *
-xstrdup(const char *str)
-{
-	char *p = strdup(str);
-
-	if (!p)
-		die_out_of_memory();
-
-	return p;
-}
-
-char *
-xstrndup(const char *str, size_t n)
-{
-	char *p;
-
-#ifdef HAVE_STRNDUP
-	p = strndup(str, n);
-#else
-	p = xmalloc(n + 1);
-#endif
-
-	if (!p)
-		die_out_of_memory();
-
-#ifndef HAVE_STRNDUP
-	strncpy(p, str, n);
-	p[n] = '\0';
-#endif
-
-	return p;
-}
+#endif /* !STRACE_XMALLOC_H */
