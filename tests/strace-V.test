@@ -39,8 +39,9 @@ config_year=$(getstr COPYRIGHT_YEAR)
 }
 
 option_unwind=$(getoption USE_LIBUNWIND " stack-unwind")
+option_lua=$(getoption USE_LUAJIT " lua")
 
-features="${option_unwind}"
+features="${option_unwind}${option_lua}"
 [ -n "$features" ] || features=" (none)"
 
 cat > "$EXP" << __EOF__

@@ -205,6 +205,9 @@ print_version(void)
 #ifdef USE_LIBUNWIND
 		" stack-unwind"
 #endif /* USE_LIBUNWIND */
+#ifdef USE_LUAJIT
+		" lua"
+#endif /* USE_LUAJIT */
 		"";
 
 	printf("%s -- version %s\n"
