@@ -173,17 +173,17 @@ gdb_begin(int fd)
 	/* duplicate the handle to separate read/write state */
 	int fd2 = dup(fd);
 	if (fd2 < 0)
-		err(1, "dup");
+		perror_msg_and_die("dup");
 
 	/* open a FILE* for reading */
 	conn->in = fdopen(fd, "rb");
 	if (conn->in == NULL)
-		err(1, "fdopen");
+		perror_msg_and_die("fdopen in");
 
 	/* open a FILE* for writing */
 	conn->out = fdopen(fd2, "wb");
 	if (conn->out == NULL)
-		err(1, "fdopen");
+		perror_msg_and_die("fdopen out");
 
 	/* reset line state by acking any earlier input */
 	fputc('+', conn->out);
@@ -205,32 +205,32 @@ gdb_begin_command(const char *command)
 
 	/* Create a bidirectional "pipe", [0] for us and [1] for the command stdio. */
 	if (socketpair(AF_UNIX, SOCK_STREAM, 0, fds) < 0)
-		err(1, "socketpair");
+		perror_msg_and_die("socketpair");
 
 	if ((ret = posix_spawn_file_actions_init(&file_actions)))
-		errx(1, "posix_spawn_file_actions_init: %s", strerror(ret));
+		error_msg_and_die("posix_spawn_file_actions_init: %s", strerror(ret));
 
 	/* Close our end in the child. */
 	if ((ret = posix_spawn_file_actions_addclose(&file_actions, fds[0])))
-		errx(1, "posix_spawn_file_actions_addclose: %s", strerror(ret));
+		error_msg_and_die("posix_spawn_file_actions_addclose: %s", strerror(ret));
 
 	/* Copy the child's end to its stdout and stdin. */
 	if (fds[1] != STDOUT_FILENO) {
 		if ((ret = posix_spawn_file_actions_adddup2(&file_actions, fds[1], STDOUT_FILENO)))
-			errx(1, "posix_spawn_file_actions_adddup2: %s", strerror(ret));
+			error_msg_and_die("posix_spawn_file_actions_adddup2: %s", strerror(ret));
 		if ((ret = posix_spawn_file_actions_addclose(&file_actions, fds[1])))
-			errx(1, "posix_spawn_file_actions_addclose: %s", strerror(ret));
+			error_msg_and_die("posix_spawn_file_actions_addclose: %s", strerror(ret));
 	}
 	if ((ret = posix_spawn_file_actions_adddup2(&file_actions, STDOUT_FILENO, STDIN_FILENO)))
-		errx(1, "posix_spawn_file_actions_adddup2: %s", strerror(ret));
+		error_msg_and_die("posix_spawn_file_actions_adddup2: %s", strerror(ret));
 
 	/* Spawn the actual command. */
 	if ((ret = posix_spawn(&pid, sh, &file_actions, NULL, argv, environ)))
-		errx(1, "posix_spawn: %s", strerror(ret));
+		error_msg_and_die("posix_spawn: %s", strerror(ret));
 
 	/* Cleanup. */
 	if ((ret = posix_spawn_file_actions_destroy(&file_actions)))
-		errx(1, "posix_spawn_file_actions_destroy: %s", strerror(ret));
+		error_msg_and_die("posix_spawn_file_actions_destroy: %s", strerror(ret));
 	close(fds[1]);
 
 	/* Avoid SIGPIPE when the command quits. */
@@ -252,7 +252,7 @@ gdb_begin_tcp(const char *node, const char *service)
 	struct addrinfo *result = NULL;
 	int s = getaddrinfo(node, service, &hints, &result);
 	if (s)
-		errx(1, "getaddrinfo: %s", gai_strerror(s));
+		error_msg_and_die("getaddrinfo: %s", gai_strerror(s));
 
 	int fd = -1;
 	struct addrinfo *ai;
@@ -271,7 +271,7 @@ gdb_begin_tcp(const char *node, const char *service)
 
 	freeaddrinfo(result);
 	if (fd < 0)
-		err(1, "connect");
+		error_msg_and_die("Cannot connect to GDB server");
 
 	/* initialize the rest of gdb on this handle */
 	return gdb_begin(fd);
@@ -282,7 +282,7 @@ gdb_begin_path(const char *path)
 {
 	int fd = open(path, O_RDWR);
 	if (fd < 0)
-		err(1, "open");
+		perror_msg_and_die("open");
 
 	/* initialize the rest of gdb on this handle */
 	return gdb_begin(fd);
@@ -322,9 +322,10 @@ send_packet(FILE *out, const char *command, size_t size)
 	fflush(out);
 
 	if (ferror(out))
-		err(1, "send");
+		error_msg("Error sending message \"$%s\" to GDB server",
+			  command);
 	else if (feof(out))
-		errx(0, "send: Connection closed");
+		error_msg_and_die("Connection to GDB server has been closed");
 }
 
 void
@@ -474,7 +475,7 @@ recv_packet(FILE *in, size_t *ret_size, bool* ret_sum_ok)
 			}
 			if (strncmp(pcr, "Stop:", 5) == 0)
 				continue;
-			errx (1,"unknown non stop packet");
+			error_msg_and_die ("unknown non stop packet");
 		}
 		case '#': /* end of packet */
 			sum -= c; /* not part of the checksum */
@@ -489,7 +490,7 @@ recv_packet(FILE *in, size_t *ret_size, bool* ret_sum_ok)
 			if (i == size) {
 				reply = realloc(reply, size + 1);
 				if (reply == NULL)
-					err(1, "realloc");
+					perror_msg_and_die("realloc");
 			}
 			reply[i] = '\0';
 
@@ -524,7 +525,7 @@ recv_packet(FILE *in, size_t *ret_size, bool* ret_sum_ok)
 						size *= 2;
 						reply = realloc(reply, size);
 						if (reply == NULL)
-							err(1, "realloc");
+							perror_msg_and_die("realloc");
 					}
 
 					/* fill the repeated character */
@@ -547,7 +548,7 @@ recv_packet(FILE *in, size_t *ret_size, bool* ret_sum_ok)
 			size *= 2;
 			reply = realloc(reply, size);
 			if (reply == NULL)
-				err(1, "realloc");
+				perror_msg_and_die("realloc");
 		}
 
 		/* add one character */
@@ -555,11 +556,14 @@ recv_packet(FILE *in, size_t *ret_size, bool* ret_sum_ok)
 	}
 
 	if (ferror(in))
-		err(1, "recv");
-	else if (feof(in))
-		errx(0, "recv: Connection closed");
-	else
-		errx(1, "recv: Unknown connection error");
+		error_msg_and_die("got stream error while receiving GDB server"
+				   " packet");
+	else if (feof(in)) {
+		error_msg_and_die("connection closed unexpectedly while "
+				"receiving GDB server packet");
+	}
+
+	error_msg_and_die("unknown GDB server connection error");
 }
 
 char *
