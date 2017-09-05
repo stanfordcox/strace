@@ -271,7 +271,7 @@ gdb_recv_stop(struct gdb_stop_reply *stop_reply)
 
 	if (debug_flag)
 	{
-		printf ("%s:%d %s\n", __FUNCTION__, __LINE__, stop.reply);
+		error_msg("%s\n", stop.reply);
 		fflush(stdout);
 	}
 
@@ -289,7 +289,7 @@ gdb_recv_stop(struct gdb_stop_reply *stop_reply)
 	     reply = pop_notification(&stop_size);
 	     if (reply) {
 		  if (debug_flag)
-		       printf ("popped %s\n", reply);
+		       error_msg("popped %s\n", reply);
 		  stop.reply = reply;
 		  reply = gdb_recv(gdb, &stop_size, false); /* vContc OK */
 	     }
@@ -303,7 +303,7 @@ gdb_recv_stop(struct gdb_stop_reply *stop_reply)
 			size_t this_size;
 			gdb_send(gdb,"vStopped",8);
 			reply = gdb_recv(gdb, &this_size, true);
-			if (strcmp (reply, "OK") == 0)
+			if (strcmp(reply, "OK") == 0)
 				break;
 			push_notification(reply, this_size);
 		} while (true);
@@ -387,7 +387,7 @@ gdb_start_init(void)
 
 	if (!followfork) {
 		/* Remove fork and vfork */
-		char *multi_cmd_semi = strchr (multi_cmd, ';');
+		char *multi_cmd_semi = strchr(multi_cmd, ';');
 		*multi_cmd_semi = '\0';
 	}
 
@@ -708,7 +708,7 @@ gdb_startup_attach(struct tcb *tcp)
 
 	if (!qflag)
 		fprintf(stderr, "Process %u attached in %s mode\n", tcp->pid,
-			gdb_has_non_stop (gdb) ? "non-stop" : "all-stop");
+			gdb_has_non_stop(gdb) ? "non-stop" : "all-stop");
 }
 
 void
@@ -861,7 +861,7 @@ gdb_dispatch_event(enum trace_event ret, int *pstatus, siginfo_t *si)
 		char cmd[] = "Hgxxxxxxxx";
 		sprintf(cmd, "Hg%x.%x", general_pid, general_tid);
 		if (debug_flag)
-			printf ("%s %s\n", __FUNCTION__, cmd);
+			error_msg("%s %s\n", __FUNCTION__, cmd);
 	}
 	/* TODO need code equivalent to PTRACE_EVENT_EXEC? */
 
@@ -944,7 +944,7 @@ gdb_dispatch_event(enum trace_event ret, int *pstatus, siginfo_t *si)
 			char cmd[] = "vCont;c:xxxxxxxx.xxxxxxxx";
 
 			struct tcb *general_tcp = gdb_find_thread(general_tid, true);
-			if (gdb_has_non_stop (gdb) && general_pid != general_tid
+			if (gdb_has_non_stop(gdb) && general_pid != general_tid
 					&& general_tcp->flags & TCB_GDB_CONT_PID_TID)
 				sprintf(cmd, "vCont;c:p%x.%x", general_pid, general_tid);
 			else
@@ -1031,7 +1031,7 @@ gdb_read_mem(pid_t tid, long addr, unsigned int len, bool check_nil, char *out)
 
 
 int
-gdb_umoven (struct tcb *const tcp, kernel_ulong_t addr, unsigned int len,
+gdb_umoven(struct tcb *const tcp, kernel_ulong_t addr, unsigned int len,
 		void *const our_addr)
 {
 	return gdb_read_mem(tcp->pid, addr, len, false, our_addr);
@@ -1039,7 +1039,7 @@ gdb_umoven (struct tcb *const tcp, kernel_ulong_t addr, unsigned int len,
 
 
 int
-gdb_umovestr (struct tcb *const tcp, kernel_ulong_t addr, unsigned int len, char *laddr)
+gdb_umovestr(struct tcb *const tcp, kernel_ulong_t addr, unsigned int len, char *laddr)
 {
 	return gdb_read_mem(tcp->pid, addr, len, true, laddr);
 }
@@ -1068,7 +1068,7 @@ gdb_getfdpath(struct tcb *tcp, int fd, char *buf, unsigned bufsize)
 
 
 bool
-gdb_verify_args (const char *username, bool daemon, unsigned int *follow_fork)
+gdb_verify_args(const char *username, bool daemon, unsigned int *follow_fork)
 {
 	if (username) {
 		error_msg_and_die("-u and -G are mutually exclusive");
@@ -1087,7 +1087,7 @@ gdb_verify_args (const char *username, bool daemon, unsigned int *follow_fork)
 
 
 bool
-gdb_handle_arg (char arg, char *optarg)
+gdb_handle_arg(char arg, char *optarg)
 {
 	if (arg != 'G')
 		return false;
