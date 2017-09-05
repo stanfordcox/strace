@@ -572,9 +572,7 @@ gdb_startup_child(char **argv)
 			gdb_nonstop = false;
 	}
 
-	char *cmd = malloc(size);
-	if (!cmd)
-		error_msg_and_die("malloc failed!");
+	char *cmd = xmalloc(size);
 	char *cmd_ptr = cmd;
 	memcpy(cmd_ptr, "vRun", 4);
 	cmd_ptr += 4;

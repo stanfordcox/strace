@@ -166,9 +166,7 @@ int gdb_decode_hex_buf(const char *bytes, size_t n, char *out)
 static struct gdb_conn *
 gdb_begin(int fd)
 {
-	struct gdb_conn *conn = calloc(1, sizeof(struct gdb_conn));
-	if (conn == NULL)
-		err(1, "calloc");
+	struct gdb_conn *conn = xcalloc(1, sizeof(struct gdb_conn));
 
 	conn->ack = true;
 
@@ -441,9 +439,7 @@ recv_packet(FILE *in, size_t *ret_size, bool* ret_sum_ok)
 {
 	size_t i = 0;
 	size_t size = 4096;
-	char *reply = malloc(size);
-	if (reply == NULL)
-		err(1, "malloc");
+	char *reply = xmalloc(size);
 
 	int c;
 	uint8_t sum = 0;
