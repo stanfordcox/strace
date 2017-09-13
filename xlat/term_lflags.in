@@ -1,0 +1,17 @@
+DEFECHO      /* SUNOS thing, what is it? */
+ECHO         /* Enable echo.  */
+ECHOCTL      /* Echo control characters as ^X.  */
+ECHOE        /* Visual erase for ERASE.  */
+ECHOK        /* Echo NL after KILL.  */
+ECHOKE       /* Visual erase for KILL.  */
+ECHONL       /* Echo NL even if ECHO is off.  */
+ECHOPRT      /* Hardcopy visual erase.  */
+EXTPROC      /* External processing on pty */
+FLUSHO
+ICANON       /* Do erase and kill processing.  */
+IEXTEN       /* Enable DISCARD and LNEXT.  */
+ISIG         /* Enable signals.  */
+NOFLSH       /* Disable flush after interrupt.  */
+PENDIN       /* Retype pending input (state).  */
+TOSTOP       /* Send SIGTTOU for background output.  */
+XCASE

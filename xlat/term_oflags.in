@@ -1,0 +1,15 @@
+#ifdef ALPHA
+XTABS   /* required by POSIX to == TAB3; but not on Alpha! */
+#endif
+
+OCRNL
+OFDEL
+OFILL
+OLCUC   /* Map lower case to upper case on output.  */
+ONLCR   /* Map NL to CR-NL on output.  */
+ONLRET
+ONOCR
+OPOST   /* Perform output processing.  */
+
+PAGEOUT /* SUNOS specific */
+WRAP    /* SUNOS specific */

@@ -1,0 +1,9 @@
+CSTOPB
+CREAD
+PARENB
+PARODD
+HUPCL
+CLOCAL
+CMSPAR    /* mark or space (stick) parity */
+CRTSCTS   /* flow control */
+CTVB      /* VisioBraille Terminal flow control */

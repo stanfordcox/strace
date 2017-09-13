@@ -38,6 +38,121 @@
 #include "xlat/baud_options.h"
 #include "xlat/modem_flags.h"
 
+#include "xlat/term_cflags.h"
+#include "xlat/term_cflags_csize.h"
+#include "xlat/term_iflags.h"
+#include "xlat/term_lflags.h"
+#include "xlat/term_oflags.h"
+#include "xlat/term_oflags_bsdly.h"
+#include "xlat/term_oflags_crdly.h"
+#include "xlat/term_oflags_ffdly.h"
+#include "xlat/term_oflags_nldly.h"
+#include "xlat/term_oflags_tabdly.h"
+#include "xlat/term_oflags_vtdly.h"
+
+#include "xlat/termio_cc.h"
+#include "xlat/termios_cc.h"
+
+static void
+decode_oflag(uint64_t val)
+{
+	static const struct {
+		const struct xlat *xl;
+		uint64_t mask;
+		const char *dfl;
+	} xlats[] = {
+		{ term_oflags_bsdly,  BSDLY,  "BS?"  },
+		{ term_oflags_crdly,  CRDLY,  "CR?"  },
+		{ term_oflags_ffdly,  FFDLY,  "FF?"  },
+		{ term_oflags_nldly,  NLDLY,  "NL?"  },
+		{ term_oflags_tabdly, TABDLY, "TAB?" },
+		{ term_oflags_vtdly,  VTDLY,  "VT?"  },
+	};
+
+	unsigned i;
+
+	for (i = 0; i < ARRAY_SIZE(xlats); i++) {
+		printxval64(xlats[i].xl, val & xlats[i].mask, xlats[i].dfl);
+		tprints("|");
+
+		val &= ~xlats[i].mask;
+	}
+
+	printflags64(term_oflags, val, NULL);
+}
+
+static void
+decode_cflag(uint64_t val)
+{
+	printxval64(baud_options, val & CBAUD, "B???");
+	tprints("|");
+	printxval64(baud_options, (val & CIBAUD) >> IBSHIFT, "B???");
+	tprintf("<<IBSHIFT|");
+	printxval64(term_cflags_csize, val & CSIZE, "CS?");
+	tprints("|");
+
+	val &= ~(CBAUD | CIBAUD | CSIZE);
+	printxval64(term_cflags, val, NULL);
+}
+
+static void
+decode_flags(uint64_t iflag, uint64_t oflag, uint64_t cflag, uint64_t lflag)
+{
+	tprints("c_iflag=");
+	printflags64(term_iflags, iflag, NULL);
+	tprints(", c_oflag=");
+	decode_oflag(oflag);
+	tprints(", c_cflag=");
+	decode_cflag(cflag);
+	tprints(", c_lflag=");
+	printflags64(term_lflags, lflag, NULL);
+}
+
+static void
+print_cc_char(bool *first, const unsigned char *data, const char *s,
+	      unsigned idx)
+{
+	if (*first)
+		*first = false;
+	else
+		tprints(", ");
+
+	if (s)
+		tprintf("[%s] = ", s);
+	else
+		tprintf("[%u] = ", idx);
+
+	tprintf("%#hhx", data[idx]);
+}
+
+static void
+decode_term_cc(const struct xlat *xl, const unsigned char *data, unsigned size)
+{
+	uint64_t not_printed = (1ULL << size) - 1;
+	unsigned i = 0;
+	bool first = true;
+
+	tprints("{");
+
+	for (; xl->str; xl++) {
+		if (xl->val >= size)
+			continue;
+
+		print_cc_char(&first, data, xl->str, xl->val);
+		not_printed &= ~(1 << xl->val);
+	}
+
+	while (not_printed) {
+		if (not_printed & 1)
+			print_cc_char(&first, data, NULL, i);
+
+		not_printed >>= 1;
+		i++;
+	}
+
+	tprints("}");
+}
+
 static void
 decode_termios(struct tcb *const tcp, const kernel_ulong_t addr)
 {
@@ -46,26 +161,21 @@ decode_termios(struct tcb *const tcp, const kernel_ulong_t addr)
 	tprints(", ");
 	if (umove_or_printaddr(tcp, addr, &tios))
 		return;
+
+	tprints("{");
+	decode_flags(tios.c_iflag, tios.c_oflag, tios.c_cflag, tios.c_lflag);
+	tprints(", ");
+
 	if (abbrev(tcp)) {
-		tprints("{");
-		printxval(baud_options, tios.c_cflag & CBAUD, "B???");
-		tprintf(" %sopost %sisig %sicanon %secho ...}",
-			(tios.c_oflag & OPOST) ? "" : "-",
-			(tios.c_lflag & ISIG) ? "" : "-",
-			(tios.c_lflag & ICANON) ? "" : "-",
-			(tios.c_lflag & ECHO) ? "" : "-");
-		return;
+		tprints("...");
+	} else {
+		tprintf("c_line=%u, ", tios.c_line);
+		if (!(tios.c_lflag & ICANON))
+			tprintf("c_cc[VMIN]=%u, c_cc[VTIME]=%u, ",
+				tios.c_cc[VMIN], tios.c_cc[VTIME]);
+		tprints("c_cc=");
+		decode_term_cc(termios_cc, tios.c_cc, NCCS);
 	}
-	tprintf("{c_iflags=%#lx, c_oflags=%#lx, ",
-		(long) tios.c_iflag, (long) tios.c_oflag);
-	tprintf("c_cflags=%#lx, c_lflags=%#lx, ",
-		(long) tios.c_cflag, (long) tios.c_lflag);
-	tprintf("c_line=%u, ", tios.c_line);
-	if (!(tios.c_lflag & ICANON))
-		tprintf("c_cc[VMIN]=%d, c_cc[VTIME]=%d, ",
-			tios.c_cc[VMIN], tios.c_cc[VTIME]);
-	tprints("c_cc=");
-	print_quoted_string((char *) tios.c_cc, NCCS, QUOTE_FORCE_HEX);
 	tprints("}");
 }
 
@@ -77,32 +187,33 @@ decode_termio(struct tcb *const tcp, const kernel_ulong_t addr)
 	tprints(", ");
 	if (umove_or_printaddr(tcp, addr, &tio))
 		return;
+
+	tprints("{");
+	decode_flags(tio.c_iflag, tio.c_oflag, tio.c_cflag, tio.c_lflag);
+	tprints(", ");
+
 	if (abbrev(tcp)) {
-		tprints("{");
-		printxval(baud_options, tio.c_cflag & CBAUD, "B???");
-		tprintf(" %sopost %sisig %sicanon %secho ...}",
-			(tio.c_oflag & OPOST) ? "" : "-",
-			(tio.c_lflag & ISIG) ? "" : "-",
-			(tio.c_lflag & ICANON) ? "" : "-",
-			(tio.c_lflag & ECHO) ? "" : "-");
-		return;
-	}
-	tprintf("{c_iflags=%#lx, c_oflags=%#lx, ",
-		(long) tio.c_iflag, (long) tio.c_oflag);
-	tprintf("c_cflags=%#lx, c_lflags=%#lx, ",
-		(long) tio.c_cflag, (long) tio.c_lflag);
-	tprintf("c_line=%u, ", tio.c_line);
-#ifdef _VMIN
-	if (!(tio.c_lflag & ICANON))
-		tprintf("c_cc[_VMIN]=%d, c_cc[_VTIME]=%d, ",
-			tio.c_cc[_VMIN], tio.c_cc[_VTIME]);
+		tprints("...");
+	} else {
+		tprintf("c_line=%u, ", tio.c_line);
+
+#ifdef _VMIN /* thanks, alpha */
+		if (!(tio.c_lflag & ICANON))
+			tprintf("c_cc[_VMIN]=%d, c_cc[_VTIME]=%d, ",
+				tio.c_cc[_VMIN], tio.c_cc[_VTIME]);
+
+		tprints("c_cc=");
+		decode_term_cc(termio_cc, tio.c_cc, NCC);
 #else /* !_VMIN */
-	if (!(tio.c_lflag & ICANON))
-		tprintf("c_cc[VMIN]=%d, c_cc[VTIME]=%d, ",
-			tio.c_cc[VMIN], tio.c_cc[VTIME]);
+		if (!(tio.c_lflag & ICANON))
+			tprintf("c_cc[VMIN]=%d, c_cc[VTIME]=%d, ",
+				tio.c_cc[VMIN], tio.c_cc[VTIME]);
+
+		tprints("c_cc=");
+		decode_term_cc(termios_cc, tio.c_cc, NCC);
 #endif /* !_VMIN */
-	tprints("c_cc=");
-	print_quoted_string((char *) tio.c_cc, NCC, QUOTE_FORCE_HEX);
+	}
+
 	tprints("}");
 }
 

@@ -1,0 +1,15 @@
+BRKINT   /* Signal interrupt on break.  */
+ICRNL    /* Map CR to NL on input.  */
+IGNBRK   /* Ignore break condition.  */
+IGNCR    /* Ignore CR.  */
+IGNPAR   /* Ignore characters with parity errors.  */
+IMAXBEL  /* Ring bell when input queue is full.  */
+INLCR    /* Map NL to CR on input.  */
+INPCK    /* Enable input parity check.  */
+ISTRIP   /* Strip 8th bit off characters.  */
+IUCLC    /* Map upper case to lower case on input.  */
+IUTF8    /* Input is UTF-8 */
+IXANY    /* Any character will restart after stop.  */
+IXOFF    /* Enable start/stop input control.  */
+IXON     /* Enable start/stop output control.  */
+PARMRK   /* Mark parity and framing errors.  */
