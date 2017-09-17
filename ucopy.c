@@ -203,6 +203,7 @@ umovestr_peekdata(const int pid, kernel_ulong_t addr, unsigned int len,
 {
 	unsigned int nread = 0;
 	unsigned int residue = addr & (sizeof(long) - 1);
+	void *orig_addr = laddr;
 
 	while (len) {
 		addr &= -sizeof(long);		/* aligned address */
@@ -237,7 +238,7 @@ umovestr_peekdata(const int pid, kernel_ulong_t addr, unsigned int len,
 		memcpy(laddr, &u.x[residue], m);
 		while (residue < sizeof(long))
 			if (u.x[residue++] == '\0')
-				return 1;
+				return (laddr - orig_addr) + residue;
 		residue = 0;
 		addr += sizeof(long);
 		laddr += m;
@@ -252,8 +253,7 @@ umovestr_peekdata(const int pid, kernel_ulong_t addr, unsigned int len,
  * Like `umove' but make the additional effort of looking
  * for a terminating zero byte.
  *
- * Returns < 0 on error, > 0 if NUL was seen,
- * (TODO if useful: return count of bytes including NUL),
+ * Returns < 0 on error, strlen + 1  if NUL was seen,
  * else 0 if len bytes were read but no NUL byte seen.
  *
  * Note: there is no guarantee we won't overwrite some bytes
@@ -275,6 +275,7 @@ umovestr(struct tcb *const tcp, kernel_ulong_t addr, unsigned int len,
 	const size_t page_size = get_pagesize();
 	const size_t page_mask = page_size - 1;
 	unsigned int nread = 0;
+	char *nul_addr;
 
 	while (len) {
 		/*
@@ -289,8 +290,8 @@ umovestr(struct tcb *const tcp, kernel_ulong_t addr, unsigned int len,
 
 		int r = vm_read_mem(pid, laddr, addr, chunk_len);
 		if (r > 0) {
-			if (memchr(laddr, '\0', r))
-				return 1;
+			if ((nul_addr = memchr(laddr, '\0', r)))
+				return (nul_addr - laddr) + 1;
 			addr += r;
 			laddr += r;
 			nread += r;
