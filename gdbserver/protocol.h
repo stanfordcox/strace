@@ -30,9 +30,9 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdbool.h>
 
 struct gdb_conn;
 
@@ -63,7 +63,8 @@ char* pop_notification(size_t *size);
 void push_notification(char *packet, size_t packet_size);
 
 /* Read complete qXfer data, returned as binary with the size.
- * On error, returns NULL with size set to the error code.  */
+ * On error, returns NULL with size set to the error code.
+ */
 char *gdb_xfer_read(struct gdb_conn *conn,
         const char *object, const char *annex,
         /* out */ size_t *size);
