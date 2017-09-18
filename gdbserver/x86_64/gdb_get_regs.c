@@ -1,5 +1,5 @@
-# if defined X86_64
-// gdb_get_regs (pid_t pid, void *io)
+long
+gdb_get_regs (pid_t pid, void *io)
 {
 #include <sys/user.h>
 /* for struct iovec */
@@ -125,10 +125,5 @@
 	}
         return -1;
 }
-#else
-{
-}
 
-}
-#endif
 

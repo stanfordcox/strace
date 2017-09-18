@@ -35,6 +35,7 @@
 #include "protocol.h"
 #include "signals.h"
 #include "scno.h"
+#include "gdb_arch_defs.h"
 
 /* FIXME jistone: export hacks */
 struct tcb *pid2tcb(int pid);
@@ -47,7 +48,7 @@ void print_stopped(struct tcb *tcp, const siginfo_t *si, const unsigned int sig)
 struct tcb *current_tcp;
 int strace_child;
 
-char* gdbserver = NULL;
+char *gdbserver = NULL;
 static int general_pid; // process id that gdbserver is focused on
 static int general_tid; // thread id that gdbserver is focused on
 static struct gdb_stop_reply stop;
@@ -960,9 +961,11 @@ gdb_get_all_regs(pid_t tid, size_t *size)
 }
 
 
-int
-gdb_get_regs (pid_t pid, void *io)
-#include "gdb_get_regs.c"
+#ifdef GDBSERVER_ARCH_HAS_GET_REGS
+# include "gdb_get_regs.c"
+#else
+long gdb_get_regs(pid_t pid, void *io) { return -1; }
+#endif
 
 
 int
