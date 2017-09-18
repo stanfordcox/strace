@@ -968,6 +968,13 @@ long gdb_get_regs(pid_t pid, void *io) { return -1; }
 #endif
 
 
+#ifdef GDBSERVER_ARCH_HAS_SET_REGS
+# include "gdb_set_regs.c"
+#else
+long gdb_set_regs(pid_t pid, void *io) { return -1; }
+#endif
+
+
 int
 gdb_get_scno(struct tcb *tcp)
 {
