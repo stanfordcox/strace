@@ -1031,6 +1031,33 @@ gdb_read_mem(pid_t tid, long addr, unsigned int len, bool check_nil, char *out)
 
 
 int
+gdb_write_mem(pid_t tid, long addr, unsigned int len, char *buffer)
+{
+	unsigned int i, j;
+	const char packet_template[] = "Xxxxxxxxxxxxxxxxx,xxxx:";
+	char *cmd = xmalloc(strlen(packet_template) + len);
+
+	if (!gdb) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	/* NB: this assumes gdbserver's current thread is also tid.  If that
+	 * may not be the case, we should send "HgTID" first, and restore.  */
+	sprintf(cmd, "X%lx,%x:", addr, len);
+	j = strlen(cmd);
+	for (i = 0; i < len; i++)
+		cmd[j++] = buffer[i];
+	cmd[j] = '\0';
+	gdb_send(gdb, cmd, strlen(cmd));
+	if (!gdb_ok())
+		error_msg("Failed to poke data to GDB server");
+
+	return 0;
+}
+
+
+int
 gdb_umoven(struct tcb *const tcp, kernel_ulong_t addr, unsigned int len,
 		void *const our_addr)
 {
@@ -1047,7 +1074,15 @@ gdb_umovestr(struct tcb *const tcp, kernel_ulong_t addr, unsigned int len, char 
 int
 gdb_upeek(int pid, unsigned long off, kernel_ulong_t *res)
 {
-       return gdb_read_mem(pid, off, current_wordsize, false, (char*)res);
+	return gdb_read_mem(pid, off, current_wordsize, false, (char*)res);
+}
+
+
+int
+gdb_upoke(int pid, unsigned long off, kernel_ulong_t res)
+{
+	kernel_ulong_t buffer = res;
+	return gdb_write_mem(pid, off, current_wordsize, (char*)&buffer);
 }
 
 
@@ -1108,6 +1143,7 @@ gdb_handle_arg(char arg, char *optarg)
 	backend.umoven = gdb_umoven;
 	backend.umovestr = gdb_umovestr;
 	backend.upeek_ = gdb_upeek;
+	backend.upoke_ = gdb_upoke;
 	backend.verify_args = gdb_verify_args;
 	return true;
 }
