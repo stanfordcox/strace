@@ -60,8 +60,12 @@ struct gdb_conn {
 };
 
 /* non-stop notifications (see gdb_recv_stop) */
-static char** notifications;
-static int notifications_size;
+struct notifications_s {
+    int size;
+    int start;
+    int count;
+    char **packet;
+} notifications;
 
 
 void
@@ -316,7 +320,7 @@ send_packet(FILE *out, const char *command, size_t size)
 	 * escape/RLE. */
 
 	if (debug_flag) {
-		error_msg("\tSending packet: $%s\n", command);
+		error_msg("\tSending packet: $%s", command);
 		fflush(stdout);
 	}
 	fputc('$', out); /* packet start */
@@ -362,67 +366,54 @@ push_notification(char *packet, size_t packet_size)
 	if (strncmp(packet+3, "syscall", 7) != 0)
 		return;
 
-	if (notifications_size == 0) {
-		notifications_size = 10;
-		notifications = malloc(sizeof(void*) * notifications_size);
-		memset(notifications, 0, sizeof(void*) * notifications_size);
+	if (notifications.size == 0) {
+		notifications.size = 32;
+		notifications.start = 0;
+		notifications.count = 0;
+		notifications.packet = xmalloc(sizeof(notifications.packet) * notifications.size);
 	}
-	  
-	while (true) {
-		for (idx = 0; idx < notifications_size; idx++) {
-			if (notifications[idx] == NULL)
-				break;
+
+	if (notifications.count == notifications.size) {
+		error_msg("Buffer overflow");
+	} else {
+		idx = notifications.start + notifications.count++;
+		if (idx >= notifications.size) {
+			idx = 0;
 		}
-		if (idx == notifications_size) {
-			notifications_size *= 2;
-			notifications = realloc(notifications, sizeof(void*) * notifications_size);
-		}
-		else {
-			notifications[idx] = malloc(packet_size);
-			memcpy(notifications[idx], packet, packet_size);
-			break;
-		}
+		notifications.packet[idx] = packet;
 	}
-	if (debug_flag) {
-		int count = 0;
-		for (idx = 0; idx < notifications_size; idx++) {
-			if (notifications[idx] != NULL)
-				count += 1;
-		}
-		error_msg("Pushed %s\n%d items now in queue\n", packet, count);
-	}
+
+	if (debug_flag)
+		printf /*error_msg*/("Pushed %s (%d items in queue)\n", packet, notifications.count);
 }
 
 
 char*
 pop_notification(size_t *size)
 {
-	int idx;
-	char *notification;
-
-	*size = 0;
-	for (idx = 0; idx < notifications_size; idx++) {
-		if (notifications[idx] != NULL)
-			break;
+	char *packet;
+	if (notifications.count == 0) {
+		return (char*)NULL;
+	} else {
+		packet = notifications.packet[notifications.start];
+		notifications.start++;
+		notifications.count--;
+		if (notifications.start == notifications.size)
+			notifications.start = 0;
 	}
-
-	if (idx == notifications_size)
-		return NULL;
-
-	notification = notifications[idx];
-	notifications[idx] = NULL;
-	*size = strlen(notification);
 
 	if (debug_flag) {
-		int count = 0;
-		for (idx = 0; idx < notifications_size; idx++) {
-			if (notifications[idx] != NULL)
-				count += 1;
-		}
-		error_msg("Popped %s\n%d items now in queue\n", notification, count);
+		error_msg("Popped %s (%d items in queue)", packet, notifications.count);
 	}
 
-	return notification;
+	return packet;
+}
+
+
+bool
+have_notification()
+{
+	return (notifications.count == 0 ? false : true);
 }
 
 
@@ -431,9 +422,9 @@ dump_notifications(char *packet, int pid, int tid)
 {
 	int idx;
 
-	for (idx = 0; idx < notifications_size; idx++) {
-		if (notifications[idx] != NULL)
-			printf ("Notify Dump: %s\n", notifications[idx]);
+	for (idx = notifications.start; idx < notifications.count; idx++) {
+		if (notifications.packet[idx] != NULL)
+			printf ("Notify Dump: %s\n", notifications.packet[idx]);
 	}
 }
 
@@ -478,7 +469,7 @@ recv_packet(FILE *in, size_t *ret_size, bool* ret_sum_ok)
 			}
 			if (strncmp(pcr, "Stop:", 5) == 0)
 				continue;
-			error_msg_and_die("unknown non stop packet");
+			continue;
 		}
 		case '#': /* end of packet */
 			sum -= c; /* not part of the checksum */
@@ -498,7 +489,7 @@ recv_packet(FILE *in, size_t *ret_size, bool* ret_sum_ok)
 			reply[i] = '\0';
 
 			if (debug_flag) {
-				error_msg("\tPacket received: %s\n", reply);
+				error_msg("\tPacket received: %s", reply);
 				fflush(stdout);
 			}
 			return reply;

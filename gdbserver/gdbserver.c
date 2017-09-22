@@ -614,6 +614,8 @@ gdb_startup_child(char **argv)
 
 	if (gdb_nonstop)
 		gdb_set_non_stop(gdb, true);
+	else
+		gdb_set_non_stop(gdb, false);
 	/* TODO normal strace attaches right before exec, so the first
 	 * syscall seen is the execve with all its arguments.  Need to
 	 * emulate that here? */
@@ -714,6 +716,12 @@ gdb_startup_attach(struct tcb *tcp)
 void
 gdb_detach(struct tcb *tcp)
 {
+	static bool already_detaching = false;
+
+	if (! already_detaching)
+		already_detaching = true;
+	if (already_detaching | gdb == NULL)
+		return;
 	if (gdb_multiprocess) {
 		char cmd[] = "D;XXXXXXXX";
 		sprintf(cmd, "D;%x", tcp->pid);
@@ -742,7 +750,11 @@ gdb_next_event(int *pstatus, siginfo_t *si)
 	pid_t tid;
 	struct tcb *tcp = NULL;
 
-	stop = gdb_recv_stop(NULL);
+        stop.reply = pop_notification(&stop.size);
+        if (stop.reply)     /* cached out of order notification? */
+        	stop = gdb_recv_stop(&stop);
+        else
+        	stop = gdb_recv_stop(NULL);
 	if (stop.size == 0)
 		error_msg_and_die("GDB server gave an empty stop reply!?");
 
@@ -843,7 +855,7 @@ gdb_next_event(int *pstatus, siginfo_t *si)
 	return TE_RESTART;
 }
 
-/* Returns true iff the main trace loop has to contionue.  The gdb
+/* Returns true iff the main trace loop has to continue.  The gdb
  * connection should be ready for a stop reply on entry,p and we'll
  * leave it the same way if we return true. */
 
@@ -856,6 +868,8 @@ gdb_dispatch_event(enum trace_event ret, int *pstatus, siginfo_t *si)
 	unsigned int sig = 0;
 
 
+	if (tcp == 0)
+		return true;
 	tid = tcp->pid;
 	if (! (tcp->flags & TCB_GDB_CONT_PID_TID)) {
 		char cmd[] = "Hgxxxxxxxx";
@@ -922,7 +936,10 @@ gdb_dispatch_event(enum trace_event ret, int *pstatus, siginfo_t *si)
 	}
 
 	free(stop.reply);
-	/* TODO Do we need to handle pop_notification here? */
+
+	/* Don't continue gdbserver until we handle any queued notifications */
+	if (have_notification())
+		return true;
 
 	if (gdb_sig) {
 		if (gdb_vcont) {

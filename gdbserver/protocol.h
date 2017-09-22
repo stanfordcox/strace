@@ -62,6 +62,8 @@ char* pop_notification(size_t *size);
 
 void push_notification(char *packet, size_t packet_size);
 
+bool have_notification();
+
 /* Read complete qXfer data, returned as binary with the size.
  * On error, returns NULL with size set to the error code.
  */
