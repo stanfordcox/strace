@@ -572,21 +572,22 @@ gdb_startup_child(char **argv)
 			gdb_nonstop = false;
 	}
 
-	char *cmd = xmalloc(size);
-	char *cmd_ptr = cmd;
-	memcpy(cmd_ptr, "vRun", 4);
-	cmd_ptr += 4;
-	for (i = 0; argv[i]; ++i) {
-		*cmd_ptr++ = ';';
-		const char *arg = argv[i];
-		while (*arg) {
-			gdb_encode_hex(*arg++, cmd_ptr);
-			cmd_ptr += 2;
+	{
+		char cmd[size];
+		char *cmd_ptr = cmd;
+		memcpy(cmd_ptr, "vRun", 4);
+		cmd_ptr += 4;
+		for (i = 0; argv[i]; ++i) {
+			*cmd_ptr++ = ';';
+			const char *arg = argv[i];
+			while (*arg) {
+				gdb_encode_hex(*arg++, cmd_ptr);
+				cmd_ptr += 2;
+			}
 		}
-	}
 
-	gdb_send(gdb, cmd, size);
-	free(cmd);
+		gdb_send(gdb, cmd, size);
+	}
 
 	struct gdb_stop_reply stop = gdb_recv_stop(NULL);
 	if (stop.size == 0)
@@ -889,6 +890,8 @@ gdb_dispatch_event(enum trace_event ret, int *pstatus, siginfo_t *si)
 	/* TODO cflag means we need to update tcp->dtime/stime usually
 	 * through wait rusage, but how can we do it? */
 
+	free (stop.reply);
+
 	switch (ret) {
 	case TE_BREAK:
 		return false;
@@ -909,16 +912,13 @@ gdb_dispatch_event(enum trace_event ret, int *pstatus, siginfo_t *si)
 	case TE_SIGNALLED:
 		print_signalled(tcp, tid, *pstatus);
 		droptcb(tcp);
-		free(stop.reply);
 		return false;
 
 	case TE_EXITED:
 		print_exited(tcp, tid, *pstatus);
 		droptcb(tcp);
-		if (!gdb_multiprocess) {
-			free(stop.reply);
+		if (!gdb_multiprocess)
 			return false;
-		}
 		break;
 
 	case TE_STOP_BEFORE_EXECVE:
@@ -934,8 +934,6 @@ gdb_dispatch_event(enum trace_event ret, int *pstatus, siginfo_t *si)
 	case TE_NEXT:
 		break;
 	}
-
-	free(stop.reply);
 
 	/* Don't continue gdbserver until we handle any queued notifications */
 	if (have_notification())
@@ -1030,17 +1028,22 @@ gdb_read_mem(pid_t tid, long addr, unsigned int len, bool check_nil, char *out)
 		char *reply = gdb_recv(gdb, &size, false);
 		if (size < 2 || reply[0] == 'E' || size > len * 2
 		    || gdb_decode_hex_buf(reply, size, out) < 0) {
+			free(reply);
 			errno = EINVAL;
 			return -1;
 		}
 
 		chunk_len = size / 2;
 		if (check_nil && strnlen(out, chunk_len) < chunk_len)
+		{
+			free(reply);
 			return 1;
+		}
 
 		addr += chunk_len;
 		out += chunk_len;
 		len -= chunk_len;
+		free(reply);
 	}
 
 	return 0;
@@ -1052,7 +1055,7 @@ gdb_write_mem(pid_t tid, long addr, unsigned int len, char *buffer)
 {
 	unsigned int i, j;
 	const char packet_template[] = "Xxxxxxxxxxxxxxxxx,xxxx:";
-	char *cmd = xmalloc(strlen(packet_template) + len);
+	char cmd[strlen(packet_template) + len];
 
 	if (!gdb) {
 		errno = EINVAL;
