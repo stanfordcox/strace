@@ -135,7 +135,7 @@ bool not_failing_only;
 /* Show path associated with fd arguments */
 unsigned int show_fd_path;
 
-static bool detach_on_execve;
+bool detach_on_execve;
 
 static int exit_code;
 int strace_child;
@@ -1621,7 +1621,7 @@ get_os_release(void)
 	return rel;
 }
 
-static void
+void
 set_sigaction(int signo, void (*sighandler)(int), struct sigaction *oldact)
 {
 	/* if signal handler is a function, add the signal to blocked_set */

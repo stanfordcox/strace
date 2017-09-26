@@ -46,12 +46,13 @@ void newoutf(struct tcb *tcp);
 void print_signalled(struct tcb *tcp, const int pid, int status);
 void print_exited(struct tcb *tcp, const int pid, int status);
 void print_stopped(struct tcb *tcp, const siginfo_t *si, const unsigned int sig);
+
 struct tcb *current_tcp;
 int strace_child;
-
+int detach_on_execve;
+static volatile int interrupted;
 char *gdbserver = NULL;
 static int general_pid; /* process id that gdbserver is focused on */
-
 static int general_tid; /* thread id that gdbserver is focused on */
 static struct gdb_stop_reply stop;
 static struct gdb_conn* gdb = NULL;
@@ -382,14 +383,12 @@ gdb_start_init(void)
 	if (!gdb_start_noack(gdb))
 		error_msg("couldn't enable GDB server noack mode");
 
-	static char multi_cmd[] = "qSupported:multiprocess+"
-		";fork-events+;vfork-events+";
+	char multi_cmd[] = "qSupported:multiprocess+;QThreadEvents+"
+		";fork-events+;vfork-events+;exec-events+";
 
-	if (!followfork) {
-		/* Remove fork and vfork */
-		char *multi_cmd_semi = strchr(multi_cmd, ';');
-		*multi_cmd_semi = '\0';
-	}
+	sprintf(multi_cmd, "qSupported:multiprocess+;QThreadEvents+;%s%s",
+			followfork ? ";fork-events+;vfork-events+" : "",
+			detach_on_execve ? ";exec-events" : "");
 
 	gdb_send(gdb, multi_cmd, sizeof(multi_cmd) - 1);
 
@@ -407,6 +406,10 @@ gdb_start_init(void)
 		if (!gdb_fork)
 			error_msg("couldn't enable GDB server vfork events handling");
 	}
+	if (!detach_on_execve) {
+		if (!strstr(reply, "exec-events+"))
+			error_msg("couldn't enable GDB server exec events handling");
+	}
 	free(reply);
 
 	static const char extended_cmd[] = "!";
@@ -414,6 +417,16 @@ gdb_start_init(void)
 	gdb_extended = gdb_ok();
 	if (!gdb_extended)
 		error_msg("couldn't enable GDB server extended mode");
+
+	static const char pass_signals[] = "QPassSignals:e;10;14;17;1a;1b;1c;21;24;25;2c;4c;97;";
+	gdb_send(gdb, pass_signals, sizeof(pass_signals) - 1);
+	if (!gdb_ok())
+		error_msg("couldn't enable GDB server signal passing");
+
+	static const char program_signals[] = "QProgramSignals:0;1;3;4;6;7;8;9;a;b;c;d;e;f;10;11;12;13;14;15;16;17;18;19;1a;1b;1c;1d;1e;1f;20;21;22;23;24;25;26;27;28;29;2a;2b;2c;2d;2e;2f;30;31;32;33;34;35;36;37;38;39;3a;3b;3c;3d;3e;3f;40;41;42;43;44;45;46;47;48;49;4a;4b;4c;4d;4e;4f;50;51;52;53;54;55;56;57;58;59;5a;5b;5c;5d;5e;5f;60;61;62;63;64;65;66;67;68;69;6a;6b;6c;6d;6e;6f;70;71;72;73;74;75;76;77;78;79;7a;7b;7c;7d;7e;7f;80;81;82;83;84;85;86;87;88;89;8a;8b;8c;8d;8e;8f;90;91;92;93;94;95;96;97;";
+	gdb_send(gdb, program_signals, sizeof(program_signals) - 1);
+	if (!gdb_ok())
+		error_msg("couldn't enable GDB server signal passing");
 
 	static const char vcont_cmd[] = "vCont?";
 	gdb_send(gdb, vcont_cmd, sizeof(vcont_cmd) - 1);
@@ -519,9 +532,22 @@ gdb_enumerate_threads(void)
 	free(reply);
 }
 
+static void
+interrupt(int sig)
+{
+	interrupted = sig;
+}
+
 void
 gdb_end_init(void)
 {
+	/* TODO interface with -I? */
+	set_sigaction(SIGHUP, interrupt, NULL);
+	set_sigaction(SIGINT, interrupt, NULL);
+	set_sigaction(SIGQUIT, interrupt, NULL);
+	set_sigaction(SIGPIPE, interrupt, NULL);
+	set_sigaction(SIGTERM, interrupt, NULL);
+
 	/* We enumerate all attached threads to be sure, especially
 	 * since we get all threads on vAttach, not just the one
 	 * pid. */
@@ -751,6 +777,9 @@ gdb_next_event(int *pstatus, siginfo_t *si)
 	pid_t tid;
 	struct tcb *tcp = NULL;
 
+	if (interrupted)
+		return TE_BREAK;
+
         stop.reply = pop_notification(&stop.size);
         if (stop.reply)     /* cached out of order notification? */
         	stop = gdb_recv_stop(&stop);
@@ -934,6 +963,10 @@ gdb_dispatch_event(enum trace_event ret, int *pstatus, siginfo_t *si)
 	case TE_NEXT:
 		break;
 	}
+
+	/* We handled quick cases, we are permitted to interrupt now. */
+	if (interrupted)
+		return false;
 
 	/* Don't continue gdbserver until we handle any queued notifications */
 	if (have_notification())
