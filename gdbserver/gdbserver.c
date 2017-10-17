@@ -46,6 +46,7 @@ void newoutf(struct tcb *tcp);
 void print_signalled(struct tcb *tcp, const int pid, int status);
 void print_exited(struct tcb *tcp, const int pid, int status);
 void print_stopped(struct tcb *tcp, const siginfo_t *si, const unsigned int sig);
+void set_sigaction(int signo, void (*sighandler)(int), struct sigaction *oldact);
 
 struct tcb *current_tcp;
 int strace_child;
@@ -650,7 +651,7 @@ gdb_startup_child(char **argv)
 }
 
 void
-gdb_startup_attach(struct tcb *tcp)
+gdb_attach_tcb(struct tcb *tcp)
 {
 	if (!gdb)
 		error_msg_and_die("GDB server not connected!");
@@ -659,16 +660,16 @@ gdb_startup_attach(struct tcb *tcp)
 		error_msg_and_die("GDB server doesn't support attaching "
 				"processes");
 
-	char cmd[] = "vAttach;XXXXXXXX";
 	struct gdb_stop_reply stop;
 	static const char nonstop_cmd[] = "QNonStop:1";
+	char vattach_cmd[] = "vAttach;XXXXXXXX";
 
 	gdb_send(gdb, nonstop_cmd, sizeof(nonstop_cmd) - 1);
 	if (gdb_ok())
 	       gdb_set_non_stop(gdb, true);
 
-	sprintf(cmd, "vAttach;%x", tcp->pid);
-	gdb_send(gdb, cmd, strlen(cmd));
+	sprintf(vattach_cmd, "vAttach;%x", tcp->pid);
+	gdb_send(gdb, vattach_cmd, strlen(vattach_cmd));
 
 	do {
 		/*
@@ -681,13 +682,20 @@ gdb_startup_attach(struct tcb *tcp)
 		    client sends: vStopped ]
 		  server sends: OK
 		*/
-		char cmd[] = "vCont;t:pXXXXXXXX";
-		sprintf(cmd, "vCont;t:p%x.-1", tcp->pid);
+		char h_cmd[] = "Hgxxxxxxxx";
+		char vcont_cmd[] = "vCont;t:pXXXXXXXX";
 		if (!gdb_ok()) {
 		     stop.type = gdb_stop_unknown;
 		     break;
 		}
-		gdb_send(gdb, cmd, strlen(cmd));
+		sprintf(h_cmd, "Hg%x.-1", tcp->pid);
+		gdb_send(gdb, h_cmd, strlen(h_cmd));
+		if (!gdb_ok()) {
+		     stop.type = gdb_stop_unknown;
+		     break;
+		}
+		sprintf(vcont_cmd, "vCont;t:p%x.-1", tcp->pid);
+		gdb_send(gdb, vcont_cmd, strlen(vcont_cmd));
 		stop = gdb_recv_stop(NULL);
 	} while (0);
 
@@ -700,7 +708,7 @@ gdb_startup_attach(struct tcb *tcp)
 			error_msg_and_die("Cannot connect to process %d: "
 					"GDB server doesn't support vAttach!", 
 					tcp->pid);
-		gdb_send(gdb, cmd, strlen(cmd));
+		gdb_send(gdb, vattach_cmd, strlen(vattach_cmd));
 		stop = gdb_recv_stop(NULL);
 		if (stop.size == 0)
 			error_msg_and_die("Cannot connect to process %d: "
@@ -747,7 +755,7 @@ gdb_detach(struct tcb *tcp)
 
 	if (! already_detaching)
 		already_detaching = true;
-	if (already_detaching | gdb == NULL)
+	if (already_detaching || gdb == NULL)
 		return;
 	if (gdb_multiprocess) {
 		char cmd[] = "D;XXXXXXXX";
@@ -767,6 +775,11 @@ gdb_detach(struct tcb *tcp)
 			error_msg("GDB server failed to detach %d", tcp->pid);
 		/* otherwise it's dead, or already detached, fine. */
 	}
+
+	if (!qflag && (tcp->flags & TCB_ATTACHED))
+		error_msg("Process %u detached", tcp->pid);
+
+	droptcb(tcp);
 }
 
 
@@ -1181,18 +1194,18 @@ gdb_handle_arg(char arg, char *optarg)
 		return false;
 
 	gdbserver = optarg;
+	backend.attach_tcb = gdb_attach_tcb;
 	backend.cleanup = gdb_cleanup;
 	backend.detach = gdb_detach;
+	backend.dispatch_event = gdb_dispatch_event;
 	backend.end_init = gdb_end_init;
 	backend.get_regs = gdb_get_regs;
 	backend.get_scno = gdb_get_scno;
 	backend.getfdpath = gdb_getfdpath;
+	backend.next_event = gdb_next_event;
 	backend.prog_pid_check = gdb_prog_pid_check;
 	backend.start_init = gdb_start_init;
-	backend.startup_attach = gdb_startup_attach;
 	backend.startup_child = gdb_startup_child;
-	backend.next_event = gdb_next_event;
-	backend.dispatch_event = gdb_dispatch_event;
 	backend.umoven = gdb_umoven;
 	backend.umovestr = gdb_umovestr;
 	backend.upeek_ = gdb_upeek;
