@@ -65,7 +65,7 @@ if [ ARCH = x86_64 ] ; then
     if [ $? -gt 0 ] ; then
 	framework_skip_ "Unable to start gdbserver"
     fi
-    $STRACE -G localhost:65432 -e write,read $(readlink -f ./gdbrsp) >& $LOG 
+    $STRACE -G localhost:65432 -e write,read $(readlink -f ../gdbrsp) >& $LOG 
 
     EXPECTED="$LOG.expected"
     cat > "$EXPECTED" << __EOF__
