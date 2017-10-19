@@ -411,7 +411,7 @@ pop_notification(size_t *size)
 
 
 bool
-have_notification()
+have_notification(void)
 {
 	return (notifications.count == 0 ? false : true);
 }

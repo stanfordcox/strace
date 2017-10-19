@@ -491,8 +491,6 @@ gdb_find_thread(int tid, bool current)
 			if (!current)
 				error_msg("couldn't set GDB server to thread %d", tid);
 		}
-		if (current)
-			gdb_init_syscalls();
 	}
 	return tcp;
 }
@@ -911,8 +909,9 @@ gdb_dispatch_event(enum trace_event ret, int *pstatus, siginfo_t *si)
 	unsigned int sig = 0;
 
 
+	/* Exit if the process has gone away */
 	if (tcp == 0)
-		return true;
+		return false;
 	tid = tcp->pid;
 	if (! (tcp->flags & TCB_GDB_CONT_PID_TID)) {
 		char cmd[] = "Hgxxxxxxxx";
@@ -959,7 +958,8 @@ gdb_dispatch_event(enum trace_event ret, int *pstatus, siginfo_t *si)
 	case TE_EXITED:
 		print_exited(tcp, tid, *pstatus);
 		droptcb(tcp);
-		if (!gdb_multiprocess)
+		/* Don't continue if the process exited */
+		if (!gdb_multiprocess || gdb_has_non_stop(gdb))
 			return false;
 		break;
 
@@ -1183,6 +1183,13 @@ gdb_verify_args(const char *username, bool daemon, unsigned int *follow_fork)
 		error_msg("-G is always multithreaded, implies -f");
 		*follow_fork = 1;
 	}
+
+#ifdef USE_LIBUNWIND
+	if (stack_trace_enabled)
+		error_msg_and_die("Simultaneous usage of gdbserver backend (-G) and "
+				"stack tracing (-k) is not supported");
+#endif
+
 	return true;
 }
 

@@ -1902,12 +1902,6 @@ init(int argc, char *argv[])
 	memset(acolumn_spaces, ' ', acolumn);
 	acolumn_spaces[acolumn] = '\0';
 
-#ifdef USE_LIBUNWIND
-       if (stack_trace_enabled && gdbserver)
-               error_msg("Simultaneous usage of gdbserver backend (-G) and "
-                         "stack tracing (-k) is not supported");
-#endif
-
 	sigprocmask(SIG_SETMASK, NULL, &start_set);
 	memcpy(&blocked_set, &start_set, sizeof(blocked_set));
 
