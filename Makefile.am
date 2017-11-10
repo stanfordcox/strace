@@ -49,7 +49,7 @@ READELF		= @READELF@
 
 ACLOCAL_AMFLAGS = -I m4
 AM_CFLAGS = $(WARN_CFLAGS)
-AM_CPPFLAGS = -I$(builddir)/$(OS)/$(ARCH) \
+OS_CPPFLAGS = -I$(builddir)/$(OS)/$(ARCH) \
 	      -I$(srcdir)/$(OS)/$(ARCH) \
 	      -I$(builddir)/$(OS) \
 	      -I$(srcdir)/$(OS) \
@@ -57,11 +57,13 @@ AM_CPPFLAGS = -I$(builddir)/$(OS)/$(ARCH) \
 	      -I$(srcdir)
 
 if ENABLE_GDBSERVER
-AM_CPPFLAGS += -I$(builddir)/gdbserver/$(ARCH) \
-	       -I$(srcdir)/gdbserver/$(ARCH) \
-	       -I$(builddir)/gdbserver \
-	       -I$(srcdir)/gdbserver
+GDBSERVER_CPPFLAGS = -I$(builddir)/gdbserver/$(ARCH) \
+	      -I$(srcdir)/gdbserver/$(ARCH) \
+	      -I$(builddir)/gdbserver \
+	      -I$(srcdir)/gdbserver
 endif
+
+AM_CPPFLAGS = $(OS_CPPFLAGS) $(GDBSERVER_CPPFLAGS)
 
 AM_CFLAGS_FOR_BUILD = $(WARN_CFLAGS_FOR_BUILD)
 AM_CPPFLAGS_FOR_BUILD = $(AM_CPPFLAGS)

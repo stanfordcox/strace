@@ -453,7 +453,7 @@ recv_packet(FILE *in, size_t *ret_size, bool* ret_sum_ok)
 			sum = 0;
 			escape = false;
 			continue;
-		case '%': 
+		case '%':
 		{
 			char pcr[6];
 
@@ -498,7 +498,7 @@ recv_packet(FILE *in, size_t *ret_size, bool* ret_sum_ok)
 			escape = true;
 			continue;
 
-		case '*': 
+		case '*':
 			/* run-length-encoding The next character tells how
 			 * many times to repeat the last character we saw.
 			 * The count is added to 29, so that the
@@ -565,12 +565,12 @@ gdb_recv(struct gdb_conn *conn, size_t *size, bool want_stop)
 {
 	char *reply;
 	bool acked = false;
-    
+
 	do {
 		reply = recv_packet(conn->in, size, &acked);
 
-		/* (See gdb_recv_stop for non-stop packet order) 
-		   If a notification arrived while expecting another packet 
+		/* (See gdb_recv_stop for non-stop packet order)
+		   If a notification arrived while expecting another packet
 		   type, then cache the notification. */
 		if (! want_stop && strncmp(reply, "T05syscall", 10) == 0) {
 			push_notification(reply, *size);
@@ -622,7 +622,7 @@ gdb_has_non_stop(struct gdb_conn *conn)
 char *
 gdb_xfer_read(struct gdb_conn *conn,
 	const char *object, const char *annex,
-        /* out */ size_t *ret_size)
+	/* out */ size_t *ret_size)
 {
 	size_t error = 0;
 	size_t offset = 0;

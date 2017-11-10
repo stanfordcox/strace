@@ -31,7 +31,7 @@
 check_prog gdb
 check_prog gdbserver
 
-gdb -batch -iex 'target remote | gdbserver --remote-debug - /usr/bin/true' >| /tmp/,gdb 2>&1 
+gdb -batch -iex 'target remote | gdbserver --remote-debug - /usr/bin/true' >| /tmp/,gdb 2>&1
 if grep QCatchSyscalls /tmp/,gdb > /dev/null
 then :
 else framework_skip_ "Correct version of gdbserver is not available"
@@ -44,7 +44,7 @@ gdbserver --once --multi :65432 &
 if [ $? -gt 0 ] ; then
 	framework_skip_ "Unable to start gdbserver"
 fi
-$STRACE -G localhost:65432 $(readlink -f ../gdbrsp) >& $LOG 
+$STRACE -G localhost:65432 $(readlink -f ../gdbrsp) >& $LOG
 
 EXPECTED="$LOG.expected"
 cat > "$EXPECTED" << __EOF__
@@ -66,7 +66,7 @@ gdbserver --once --multi :65432 &
 if [ $? -gt 0 ] ; then
 	framework_skip_ "Unable to start gdbserver"
 fi
-$STRACE -G 'localhost:65432;non-stop' $(readlink -f ../gdbrsp) >& $LOG 
+$STRACE -G 'localhost:65432;non-stop' $(readlink -f ../gdbrsp) >& $LOG
 
 EXPECTED="$LOG.expected"
 cat > "$EXPECTED" << __EOF__
@@ -90,7 +90,7 @@ if [ $STRACE_ARCH = x86_64 ] ; then
     if [ $? -gt 0 ] ; then
 	framework_skip_ "Unable to start gdbserver"
     fi
-    $STRACE -G localhost:65432 -e write,read $(readlink -f ../gdbrsp) >& $LOG 
+    $STRACE -G localhost:65432 -e write,read $(readlink -f ../gdbrsp) >& $LOG
 
     EXPECTED="$LOG.expected"
     cat > "$EXPECTED" << __EOF__
@@ -105,5 +105,3 @@ fi
 # TODO -pPID
 
 exit 0
-
-

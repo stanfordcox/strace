@@ -1,4 +1,4 @@
-/* Implementation of strace features over the GDB remote protocol.
+ /* Implementation of strace features over the GDB remote protocol.
  *
  * Copyright (c) 2015, 2016 Red Hat Inc.
  * Copyright (c) 2015 Josh Stone <cuviper@gmail.com>
@@ -704,13 +704,13 @@ gdb_attach_tcb(struct tcb *tcp)
 			gdb_set_non_stop(gdb, false);
 		else
 			error_msg_and_die("Cannot connect to process %d: "
-					"GDB server doesn't support vAttach!", 
+					"GDB server doesn't support vAttach!",
 					tcp->pid);
 		gdb_send(gdb, vattach_cmd, strlen(vattach_cmd));
 		stop = gdb_recv_stop(NULL);
 		if (stop.size == 0)
 			error_msg_and_die("Cannot connect to process %d: "
-					"GDB server doesn't support vAttach!", 
+					"GDB server doesn't support vAttach!",
 					tcp->pid);
 		switch (stop.type) {
 		case gdb_stop_error:
@@ -791,11 +791,11 @@ gdb_next_event(int *pstatus, siginfo_t *si)
 	if (interrupted)
 		return TE_BREAK;
 
-        stop.reply = pop_notification(&stop.size);
-        if (stop.reply)     /* cached out of order notification? */
-        	stop = gdb_recv_stop(&stop);
-        else
-        	stop = gdb_recv_stop(NULL);
+	stop.reply = pop_notification(&stop.size);
+	if (stop.reply)	    /* cached out of order notification? */
+		stop = gdb_recv_stop(&stop);
+	else
+		stop = gdb_recv_stop(NULL);
 	if (stop.size == 0)
 		error_msg_and_die("GDB server gave an empty stop reply!?");
 
@@ -901,8 +901,9 @@ gdb_next_event(int *pstatus, siginfo_t *si)
  * leave it the same way if we return true. */
 
 bool
-gdb_dispatch_event(enum trace_event ret, int *pstatus, siginfo_t *si)
+gdb_dispatch_event(enum trace_event ret, int *pstatus, void *si_p)
 {
+	siginfo_t *si = (siginfo_t*)si_p;
 	int gdb_sig = 0;
 	struct tcb *tcp = current_tcp;
 	pid_t tid;
