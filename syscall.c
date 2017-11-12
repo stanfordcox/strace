@@ -663,18 +663,17 @@ int
 syscall_entering_trace(struct tcb *tcp, unsigned int *sig)
 {
 	/* Restrain from fault injection while the trace executes strace code. */
-	if (hide_log(tcp)) {
+	if (hide_log(tcp))
 		tcp->qual_flg &= ~QUAL_INJECT;
-	}
 
 	switch (tcp->s_ent->sen) {
-		case SEN_execve:
-		case SEN_execveat:
+	case SEN_execve:
+	case SEN_execveat:
 #if defined SPARC || defined SPARC64
-		case SEN_execv:
+	case SEN_execv:
 #endif
-			tcp->flags &= ~TCB_HIDE_LOG;
-			break;
+		tcp->flags &= ~TCB_HIDE_LOG;
+		break;
 	}
 
 	if (!traced(tcp) || (tracing_paths && !pathtrace_match(tcp))) {
@@ -684,16 +683,14 @@ syscall_entering_trace(struct tcb *tcp, unsigned int *sig)
 
 	tcp->flags &= ~TCB_FILTERED;
 
-	if (hide_log(tcp)) {
+	if (hide_log(tcp))
 		return 0;
-	}
 
 	if (inject(tcp))
 		tamper_with_syscall_entering(tcp, sig);
 
-	if (cflag == CFLAG_ONLY_STATS) {
+	if (cflag == CFLAG_ONLY_STATS)
 		return 0;
-	}
 
 #ifdef USE_LIBUNWIND
 	if (stack_trace_enabled) {
@@ -706,6 +703,7 @@ syscall_entering_trace(struct tcb *tcp, unsigned int *sig)
 	tprintf("%s(", tcp->s_ent->sys_name);
 	int res = raw(tcp) ? printargs(tcp) : tcp->s_ent->sys_func(tcp);
 	fflush(tcp->outf);
+
 	return res;
 }
 
