@@ -130,6 +130,7 @@ bool not_failing_only;
 unsigned int show_fd_path;
 
 static bool detach_on_execve;
+bool detach_on_traceme;
 
 static int exit_code;
 static int strace_child;
@@ -1584,10 +1585,14 @@ init(int argc, char *argv[])
 	    "a:b:cCdDe:E:fFhiI:o:O:p:P:qrs:S:tTu:vVwxyz")) != EOF) {
 		switch (c) {
 		case 'b':
-			if (strcmp(optarg, "execve") != 0)
-				error_msg_and_die("Syscall '%s' for -b isn't supported",
-					optarg);
-			detach_on_execve = 1;
+			if (strcmp(optarg, "execve") == 0) {
+				detach_on_execve = 1;
+			} else if (strcmp(optarg, "ptrace_traceme") == 0) {
+				detach_on_traceme = 1;
+			} else {
+				error_msg_and_die("Syscall '%s' for -b isn't "
+						  "supported", optarg);
+			}
 			break;
 		case 'c':
 			if (cflag == CFLAG_BOTH) {
@@ -2431,6 +2436,7 @@ dispatch_event(enum trace_event ret, int *pstatus, siginfo_t *si)
 {
 	unsigned int restart_op = PTRACE_SYSCALL;
 	unsigned int restart_sig = 0;
+	int res;
 
 	switch (ret) {
 	case TE_BREAK:
@@ -2443,7 +2449,14 @@ dispatch_event(enum trace_event ret, int *pstatus, siginfo_t *si)
 		break;
 
 	case TE_SYSCALL_STOP:
-		if (trace_syscall(current_tcp, &restart_sig) < 0) {
+		res = trace_syscall(current_tcp, &restart_sig);
+
+		if ((res >= 0) && (res & RVAL_DETACH)) {
+			detach(current_tcp);
+			return true;
+		}
+
+		if (res < 0) {
 			/*
 			 * ptrace() failed in trace_syscall().
 			 * Likely a result of process disappearing mid-flight.

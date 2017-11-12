@@ -309,6 +309,7 @@ extern const struct xlat whence_codes[];
 #define RVAL_DECODED	0100	/* syscall decoding finished */
 #define RVAL_IOCTL_DECODED 0200	/* ioctl sub-parser successfully decoded
 				   the argument */
+#define RVAL_DETACH	0400	/* tracee should be detached */
 
 #define IOCTL_NUMBER_UNKNOWN 0
 #define IOCTL_NUMBER_HANDLED 1
@@ -361,6 +362,7 @@ extern bool count_wallclock;
 extern unsigned int qflag;
 extern bool not_failing_only;
 extern unsigned int show_fd_path;
+extern bool detach_on_traceme;
 /* are we filtering traces based on paths? */
 extern struct path_set {
 	const char **paths_selected;
@@ -787,6 +789,8 @@ extern void tprintf(const char *fmt, ...) ATTRIBUTE_FORMAT((printf, 1, 2));
 extern void tprints(const char *str);
 extern void tprintf_comment(const char *fmt, ...) ATTRIBUTE_FORMAT((printf, 1, 2));
 extern void tprints_comment(const char *str);
+
+extern bool should_detach_ptrace(struct tcb *tcp);
 
 #if SUPPORTED_PERSONALITIES > 1
 extern void set_personality(int personality);

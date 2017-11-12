@@ -60,7 +60,7 @@ strace \- trace system calls and signals
 .SY strace
 .OP \-CdffhikqrtttTvVxxy
 .OP \-I n
-.OP \-b execve
+.OP \-b condition
 .OM \-e expr
 .OP \-a column
 .OP \-o file
@@ -80,7 +80,7 @@ strace \- trace system calls and signals
 .B \-c
 .OP \-df
 .OP \-I n
-.OP \-b execve
+.OP \-b condition
 .OM \-e expr
 .OP \-O overhead
 .OP \-S sortby
@@ -692,13 +692,27 @@ behavior displays a reasonable subset of structure members.  Use
 this option to get all of the gory details.
 .SS Tracing
 .TP 12
-.BI "\-b " syscall
-If specified syscall is reached, detach from traced process.
-Currently, only
-.I execve
-syscall is supported.  This option is useful if you want to trace
-multi-threaded process and therefore require -f, but don't want
-to trace its (potentially very complex) children.
+.BI "\-b " condition
+If specified condition is reached, detach from traced process.
+The following conditions are supported currently:
+.RS
+.TP
+.B execve
+Detach on
+.B execve
+syscall.
+This option is useful if you want to trace multi-threaded process
+and therefore require
+.BR \-f ,
+but don't want to trace its (potentially very complex) children.
+.TP
+.B ptrace_traceme
+Detach on
+.BR ptrace ( PTRACE_TRACEME )
+syscall.
+This option is useful if you want to trace a process hierarchy where
+children want to be traced by their parents.
+.RE
 .TP
 .B \-D
 Run tracer process as a detached grandchild, not as parent of the

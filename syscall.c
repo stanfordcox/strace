@@ -659,6 +659,17 @@ syscall_entering_decode(struct tcb *tcp)
 	return 1;
 }
 
+static bool
+should_detach(struct tcb *tcp)
+{
+	switch (tcp->s_ent->sen) {
+	case SEN_ptrace:
+		return should_detach_ptrace(tcp);
+	}
+
+	return false;
+}
+
 int
 syscall_entering_trace(struct tcb *tcp, unsigned int *sig)
 {
@@ -675,6 +686,9 @@ syscall_entering_trace(struct tcb *tcp, unsigned int *sig)
 		tcp->flags &= ~TCB_HIDE_LOG;
 		break;
 	}
+
+	if (!hide_log(tcp) && should_detach(tcp))
+		return RVAL_DETACH;
 
 	if (!traced(tcp) || (tracing_paths && !pathtrace_match(tcp))) {
 		tcp->flags |= TCB_FILTERED;

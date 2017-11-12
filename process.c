@@ -82,6 +82,14 @@ print_user_offset_addr(const kernel_ulong_t addr)
 	}
 }
 
+bool
+should_detach_ptrace(struct tcb *tcp)
+{
+	const kernel_ulong_t request = tcp->u_arg[0];
+
+	return detach_on_traceme && (request == PTRACE_TRACEME);
+}
+
 SYS_FUNC(ptrace)
 {
 	const kernel_ulong_t request = tcp->u_arg[0];
