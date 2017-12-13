@@ -88,6 +88,8 @@ strace_SOURCES =	\
 	affinity.c	\
 	aio.c		\
 	alpha.c		\
+	aux_children.c	\
+	aux_children.h	\
 	basic_filters.c	\
 	bind.c		\
 	bjm.c		\
