@@ -512,9 +512,7 @@ err_name(unsigned long err)
 	return NULL;
 }
 
-static long get_regs(struct tcb *);
 static int get_syscall_args(struct tcb *);
-static int get_syscall_result(struct tcb *);
 static int arch_get_scno(struct tcb *tcp);
 static int arch_set_scno(struct tcb *, kernel_ulong_t);
 static void get_error(struct tcb *, const bool);
@@ -1103,15 +1101,15 @@ static long get_regs_error;
 #endif
 
 void
-clear_regs(struct tcb *tcp)
+ptrace_clear_regs(struct tcb *tcp)
 {
 #ifdef ptrace_getregset_or_getregs
 	get_regs_error = -1;
 #endif
 }
 
-static long
-get_regs(struct tcb *const tcp)
+long
+ptrace_get_regs(struct tcb *const tcp)
 {
 #ifdef ptrace_getregset_or_getregs
 
@@ -1181,7 +1179,7 @@ free_sysent_buf(void *ptr)
  *    ("????" etc) and return an appropriate code.
  */
 int
-get_scno(struct tcb *tcp)
+ptrace_get_scno(struct tcb *tcp)
 {
 	if (get_regs(tcp) < 0)
 		return -1;
@@ -1215,19 +1213,19 @@ get_scno(struct tcb *tcp)
 }
 
 int
-set_scno(struct tcb *tcp, kernel_ulong_t scno)
+ptrace_set_scno(struct tcb *tcp, kernel_ulong_t scno)
 {
 	return arch_set_scno(tcp, scno);
 }
 
 int
-set_error(struct tcb *tcp)
+ptrace_set_error(struct tcb *tcp)
 {
 	return arch_set_error(tcp);
 }
 
 int
-set_success(struct tcb *tcp)
+ptrace_set_success(struct tcb *tcp)
 {
 	return arch_set_success(tcp);
 }
@@ -1244,8 +1242,8 @@ static int get_syscall_result_regs(struct tcb *);
  * -1: error, syscall_exiting_trace() should print error indicator
  *    ("????" etc) and bail out.
  */
-static int
-get_syscall_result(struct tcb *tcp)
+int
+ptrace_get_syscall_result(struct tcb *tcp)
 {
 	if (get_syscall_result_regs(tcp) < 0)
 		return -1;

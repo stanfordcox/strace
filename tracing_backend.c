@@ -1,12 +1,5 @@
 /*
- * Copyright (c) 1991, 1992 Paul Kranenburg <pk@cs.few.eur.nl>
- * Copyright (c) 1993 Branko Lankester <branko@hacktic.nl>
- * Copyright (c) 1993, 1994, 1995, 1996 Rick Sladkey <jrs@world.std.com>
- * Copyright (c) 1996-1999 Wichert Akkerman <wichert@cistron.nl>
- * Copyright (c) 1999 IBM Deutschland Entwicklung GmbH, IBM Corporation
- *                     Linux for s390 port by D.J. Barrow
- *                    <barrow_dj@mail.yahoo.com,djbarrow@de.ibm.com>
- * Copyright (c) 1999-2017 The strace developers.
+ * Copyright (c) 2017 The strace developers.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -32,23 +25,13 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "defs.h"
-#include "ptrace.h"
+#include "tracing_backend.h"
+#include "ptrace_backend.h"
 
-int
-ptrace_upeek(struct tcb *tcp, unsigned long off, kernel_ulong_t *res)
+const struct tracing_backend *cur_tracing_backend = &ptrace_backend;
+
+void
+set_tracing_backend(struct tracing_backend *backend)
 {
-	long val;
-
-	errno = 0;
-	val = ptrace(PTRACE_PEEKUSER, (pid_t) tcp->pid, (void *) off, 0);
-	if (val == -1 && errno) {
-		if (errno != ESRCH) {
-			perror_msg("upeek: PTRACE_PEEKUSER pid:%d @0x%lx)",
-				   tcp->pid, off);
-		}
-		return -1;
-	}
-	*res = (unsigned long) val;
-	return 0;
+	cur_tracing_backend = backend;
 }
