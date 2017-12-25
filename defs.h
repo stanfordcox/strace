@@ -478,10 +478,10 @@ extern long getrval2(struct tcb *);
 #endif
 
 extern const char *signame(const int);
-extern void pathtrace_select_set(const char *, struct path_set *);
+extern void pathtrace_select_set(struct tcb *, const char *, struct path_set *);
 extern bool pathtrace_match_set(struct tcb *, struct path_set *);
-#define pathtrace_select(tcp)	\
-	pathtrace_select_set(tcp, &global_path_set)
+#define pathtrace_select(tcp, _path)	\
+	pathtrace_select_set(tcp, _path, &global_path_set)
 #define pathtrace_match(tcp)	\
 	pathtrace_match_set(tcp, &global_path_set)
 extern int getfdpath(struct tcb *, int, char *, unsigned);
