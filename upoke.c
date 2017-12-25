@@ -29,7 +29,7 @@
 #include "ptrace.h"
 
 int
-upoke(struct tcb *tcp, unsigned long off, kernel_ulong_t val)
+ptrace_upoke(struct tcb *tcp, unsigned long off, kernel_ulong_t val)
 {
 	if (ptrace(PTRACE_POKEUSER, tcp->pid, off, val)) {
 		if (errno != ESRCH)

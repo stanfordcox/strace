@@ -167,8 +167,6 @@ char *program_invocation_name;
 
 unsigned os_release; /* generated from uname()'s u.release */
 
-static void detach(struct tcb *tcp);
-static void cleanup(void);
 static void interrupt(int sig);
 static sigset_t start_set, blocked_set;
 
@@ -916,8 +914,8 @@ droptcb(struct tcb *tcp)
  * attached-unstopped processes give the same ESRCH.  For unattached process we
  * would SIGSTOP it and wait for its SIGSTOP notification forever.
  */
-static void
-detach(struct tcb *tcp)
+void
+ptrace_detach(struct tcb *tcp)
 {
 	int error;
 	int status;
@@ -1099,8 +1097,8 @@ process_opt_p_list(char *opt)
 	}
 }
 
-static void
-attach_tcb(struct tcb *const tcp)
+void
+ptrace_attach_tcb(struct tcb *const tcp)
 {
 	if (ptrace_attach_or_seize(tcp->pid) < 0) {
 		perror_msg("attach: ptrace(%s, %d)",
@@ -1372,8 +1370,8 @@ redirect_standard_fds(void)
 	}
 }
 
-static void
-startup_child(char **argv)
+void
+ptrace_startup_child(char **argv)
 {
 	struct_stat statbuf;
 	const char *filename;
@@ -1653,7 +1651,7 @@ set_sighandler(int signo, void (*sighandler)(int), struct sigaction *oldact)
 }
 
 bool
-tracing_backend_init(int argc, char *argv[])
+ptrace_init(int argc, char *argv[])
 {
 	os_release = get_os_release();
 
@@ -1674,8 +1672,6 @@ tracing_backend_init(int argc, char *argv[])
 
 	return true;
 }
-
-#define tracing_backend_name() "ptrace"
 
 /*
  * Initialization part of main() was eating much stack (~0.5k),
@@ -2042,6 +2038,8 @@ init(int argc, char *argv[])
 	 * -p PID1,PID2: yes (there are already more than one pid)
 	 */
 	print_pid_pfx = (outfname && followfork < 2 && (followfork == 1 || nprocs > 1));
+
+	tracing_backend_post_init();
 }
 
 static struct tcb *
@@ -2061,8 +2059,8 @@ pid2tcb(int pid)
 	return NULL;
 }
 
-static void
-cleanup(void)
+void
+ptrace_cleanup(void)
 {
 	unsigned int i;
 	struct tcb *tcp;
@@ -2344,13 +2342,13 @@ struct ptrace_trace_loop_data {
 };
 
 void *
-alloc_trace_loop_storage(void)
+ptrace_alloc_trace_loop_storage(void)
 {
 	return xmalloc(sizeof(struct ptrace_trace_loop_data));
 }
 
-static enum trace_event
-next_event(int *pstatus, void *data)
+enum trace_event
+ptrace_next_event(int *pstatus, void *data)
 {
 	int pid;
 	int wait_errno;
@@ -2534,8 +2532,8 @@ trace_syscall(struct tcb *tcp, unsigned int *sig)
 	}
 }
 
-siginfo_t *
-get_siginfo(void *data)
+void *
+ptrace_get_siginfo(void *data)
 {
 	struct ptrace_trace_loop_data *trace_loop_data = data;
 
@@ -2543,7 +2541,7 @@ get_siginfo(void *data)
 }
 
 void
-handle_group_stop(unsigned int *restart_sig, void *data)
+ptrace_handle_group_stop(unsigned int *restart_sig, void *data)
 {
 	struct ptrace_trace_loop_data *trace_loop_data = data;
 
@@ -2561,7 +2559,7 @@ handle_group_stop(unsigned int *restart_sig, void *data)
 }
 
 void
-handle_exec(struct tcb **current_tcp, void *data)
+ptrace_handle_exec(struct tcb **current_tcp, void *data)
 {
 	/*
 	 * Under Linux, execve changes pid to thread leader's pid,
@@ -2584,7 +2582,7 @@ handle_exec(struct tcb **current_tcp, void *data)
 }
 
 bool
-restart_process(struct tcb *current_tcp, unsigned int restart_sig,
+ptrace_restart_process(struct tcb *current_tcp, unsigned int restart_sig,
 		       void *data)
 {
 	struct ptrace_trace_loop_data *trace_loop_data = data;
