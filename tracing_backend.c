@@ -28,6 +28,8 @@
 #include "tracing_backend.h"
 #include "ptrace_backend.h"
 
+#if ADDITIONAL_TRACING_PACKENDS
+
 const struct tracing_backend *cur_tracing_backend = &ptrace_backend;
 
 void
@@ -35,3 +37,5 @@ set_tracing_backend(struct tracing_backend *backend)
 {
 	cur_tracing_backend = backend;
 }
+
+#endif  /* ADDITIONAL_TRACING_PACKENDS */

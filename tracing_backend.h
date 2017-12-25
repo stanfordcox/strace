@@ -31,6 +31,8 @@
 #include "defs.h"
 #include "trace_event.h"
 
+#if ADDITIONAL_TRACING_PACKENDS
+
 struct msghdr;
 
 /**
@@ -386,5 +388,55 @@ tracee_recvmsg(struct tcb *tcp, int fd, struct msghdr *msg, int flags)
 	else
 		return ENOSYS;
 }
+
+#else /* !ADDITIONAL_TRACING_PACKENDS */
+
+# include "ptrace_backend.h"
+
+# define tracing_backend_name()      "ptrace"
+# define tracing_backend_handle_arg  false
+# define tracing_backend_init        ptrace_init
+# define tracing_backend_post_init() (void)0
+# define startup_child               ptrace_startup_child
+# define attach_tcb                  ptrace_attach_tcb
+# define detach                      ptrace_detach
+# define cleanup                     ptrace_cleanup
+# define alloc_trace_loop_storage    ptrace_alloc_trace_loop_storage
+# define next_event                  ptrace_next_event
+# define handle_group_stop           ptrace_handle_group_stop
+# define handle_exec                 ptrace_handle_exec
+# define get_siginfo                 ptrace_get_siginfo
+# define restart_process             ptrace_restart_process
+# define clear_regs                  ptrace_clear_regs
+# define get_regs                    ptrace_get_regs
+# define get_scno                    ptrace_get_scno
+# define set_scno                    ptrace_set_scno
+# define set_error                   ptrace_set_error
+# define set_success                 ptrace_set_success
+# define get_syscall_result          ptrace_get_syscall_result
+# define umoven                      ptrace_umoven
+# define umovestr                    ptrace_umovestr
+# define upeek                       ptrace_upeek
+# define upoke                       ptrace_upoke
+# define tracee_open                 ptrace_open
+
+# define tracee_realpath(_tcp, _path, _resolved_path) \
+	realpath(_path, _resolved_path)
+# define tracee_pread(_tcp, _fd, _buf, _count, _offset) \
+	pread(_fd, _buf, _count, _offset)
+# define tracee_close(_tcp, _fd) \
+	close(_fd)
+# define tracee_readlink(_tcp, _path, _buf, _buf_size) \
+	readlink(_path, _buf, _buf_size)
+# define tracee_getxattr(_tcp, _path, _name, _buf, _buf_size) \
+	getxattr(_path, _name, _buf, _buf_size)
+# define tracee_socket(_tcp, _domain, _type, _protocol) \
+	socket(_domain, _type, _protocol)
+# define tracee_sendmsg(_tcp, _fd, _msg, _flags) \
+	sendmsg(_fd, _msg, _flags)
+# define tracee_recvmsg(_tcp, _fd, _msg, _flags) \
+	recvmsg(_fd, _msg, _flags)
+
+#endif /* !ADDITIONAL_TRACING_PACKENDS */
 
 #endif /* !STRACE_TRACING_BACKEND_H */
