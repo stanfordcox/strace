@@ -1652,6 +1652,25 @@ set_sighandler(int signo, void (*sighandler)(int), struct sigaction *oldact)
 	sigaction(signo, &sa, oldact);
 }
 
+bool
+tracing_backend_init(int argc, char *argv[])
+{
+	os_release = get_os_release();
+
+	if (followfork)
+		ptrace_setoptions |= PTRACE_O_TRACECLONE |
+				     PTRACE_O_TRACEFORK |
+				     PTRACE_O_TRACEVFORK;
+	debug_msg("ptrace_setoptions = %#x", ptrace_setoptions);
+
+
+	test_ptrace_seize();
+
+	return true;
+}
+
+#define tracing_backend_name() "ptrace"
+
 /*
  * Initialization part of main() was eating much stack (~0.5k),
  * which was unused after init.
@@ -1685,8 +1704,6 @@ init(int argc, char *argv[])
 	}
 
 	strace_tracer_pid = getpid();
-
-	os_release = get_os_release();
 
 	shared_log = stderr;
 	set_sortby(DEFAULT_SORTBY);
@@ -1883,6 +1900,10 @@ init(int argc, char *argv[])
 		tflag = 1;
 	}
 
+	if (!tracing_backend_init(argc, argv))
+		error_msg_and_die("Cannot initialize backend \"%s\".",
+				  tracing_backend_name());
+
 	for (cnt = 0; cnt < pathtrace_count; cnt++)
 		pathtrace_select(pathtrace_paths[cnt]);
 	free(pathtrace_paths);
@@ -1924,13 +1945,6 @@ init(int argc, char *argv[])
 		run_uid = getuid();
 		run_gid = getgid();
 	}
-
-	if (followfork)
-		ptrace_setoptions |= PTRACE_O_TRACECLONE |
-				     PTRACE_O_TRACEFORK |
-				     PTRACE_O_TRACEVFORK;
-	debug_msg("ptrace_setoptions = %#x", ptrace_setoptions);
-	test_ptrace_seize();
 
 	/*
 	 * Is something weird with our stdin and/or stdout -
