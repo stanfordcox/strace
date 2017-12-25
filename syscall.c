@@ -1103,7 +1103,7 @@ static long get_regs_error;
 #endif
 
 void
-clear_regs(void)
+clear_regs(struct tcb *tcp)
 {
 #ifdef ptrace_getregset_or_getregs
 	get_regs_error = -1;
