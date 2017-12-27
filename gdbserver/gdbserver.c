@@ -50,6 +50,7 @@ int strace_child;
 char* gdbserver = NULL;
 static int general_pid; // process id that gdbserver is focused on
 static int general_tid; // thread id that gdbserver is focused on
+static struct gdb_stop_reply stop;
 static struct gdb_conn* gdb = NULL;
 static bool gdb_extended = false;
 static bool gdb_multiprocess = false;
@@ -431,14 +432,14 @@ gdb_init_syscalls(void)
 	unsigned sci;
 
 	/* Only send syscall list if a filtered list was given with -e */
-	for (sci = 0; sci < num_quals; sci++)
-		if (! (qual_flags[sci] & QUAL_TRACE)) {
+	for (sci = 0; sci < nsyscalls; sci++)
+		if (! (qual_flags(sci) & QUAL_TRACE)) {
 			want_syscall_set = true;
 			break;
 		}
 
-	for (sci = 0; want_syscall_set && sci < num_quals; sci++)
-		if (qual_flags[sci] & QUAL_TRACE)
+	for (sci = 0; want_syscall_set && sci < nsyscalls; sci++)
+		if (qual_flags(sci) & QUAL_TRACE)
 			if (asprintf ((char**)&syscall_set, "%s;%x", syscall_set, sci) < 0)
 				error_msg("couldn't enable gdb syscall catching");
 
@@ -612,7 +613,7 @@ gdb_startup_child(char **argv)
 		gdb_set_non_stop(gdb, true);
         // TODO normal strace attaches right before exec, so the first syscall
         // seen is the execve with all its arguments.  Need to emulate that here?
-        hide_log_until_execve = 0;
+	// Need to handle TCB_HIDE_LOG and hide_log(tcp) ?
 }
 
 void
@@ -722,189 +723,221 @@ gdb_detach(struct tcb *tcp)
         }
 }
 
-// Returns true iff the main trace loop has to continue.
-// The gdb connection should be ready for a stop reply on entry,
-// and we'll leave it the same way if we return true.
-bool
-gdb_trace(void)
+
+enum trace_event
+gdb_next_event(int *pstatus, siginfo_t *si)
 {
-	struct gdb_stop_reply stop;
+//	struct gdb_stop_reply stop;
 	int gdb_sig = 0;
 	pid_t tid;
 	struct tcb *tcp = NULL;
 
 	stop = gdb_recv_stop(NULL);
-	do {
-	    if (stop.size == 0)
-                error_msg_and_die("gdb server gave an empty stop reply!?");
-            switch (stop.type) {
-                    case gdb_stop_unknown:
-                            error_msg_and_die("gdb server stop reply unknown: %.*s",
-                                            (int)stop.size, stop.reply);
-                    case gdb_stop_error:
-                            // vCont error -> no more processes
-                            free(stop.reply);
-                            return false;
-                    default:
-                            break;
-            }
-
-	    tid = -1;
-            tcp = NULL;
-
-            if (gdb_multiprocess) {
-                    tid = stop.tid;
-                    tcp = gdb_find_thread(tid, true);
-                    /* Set current output file */
-                    current_tcp = tcp;
-            } else if (current_tcp) {
-                    tcp = current_tcp;
-                    tid = tcp->pid;
-            }
-            if (tid < 0 || tcp == NULL)
-                    error_msg_and_die("couldn't read tid from stop reply: %.*s",
-                                    (int)stop.size, stop.reply);
-
-            bool exited = false;
-            switch (stop.type) {
-                    case gdb_stop_exited:
-                            print_exited(tcp, tid, W_EXITCODE(stop.code, 0));
-                            droptcb(tcp);
-                            exited = true;
-                            break;
-
-                    case gdb_stop_terminated:
-                            print_signalled(tcp, tid, W_EXITCODE(0,
-                                            gdb_signal_to_target(tcp, stop.code)));
-                            droptcb(tcp);
-                            exited = true;
-                            break;
-
-                    default:
-                            break;
-            }
-
-            if (exited && !gdb_multiprocess) {
-                    free(stop.reply);
-                    return false;
-            }
-
-            if (! (tcp->flags & TCB_GDB_CONT_PID_TID)) {
-        	    char cmd[] = "Hgxxxxxxxx";
-        	    sprintf(cmd, "Hg%x.%x", general_pid, stop.tid);
-        	    if (debug_flag)
-        		    printf ("%s %s\n", __FUNCTION__, cmd);
-                }
-            // TODO need code equivalent to PTRACE_EVENT_EXEC?
-
-            /* Is this the very first time we see this tracee stopped? */
-            if (tcp->flags & TCB_STARTUP) {
-                    tcp->flags &= ~TCB_STARTUP;
-                    if (get_scno(tcp) == 1)
-                            tcp->s_prev_ent = tcp->s_ent;
-            }
-
-            // TODO cflag means we need to update tcp->dtime/stime
-            // usually through wait rusage, but how can we do it?
-
-            switch (stop.type) {
-                    case gdb_stop_unknown:
-                    case gdb_stop_error:
-                    case gdb_stop_exited:
-                    case gdb_stop_terminated:
-                            // already handled above
-                            break;
-
-                    case gdb_stop_trap:
-                            // misc trap, nothing to do...
-                            break;
-
-                    case gdb_stop_syscall_entry:
-                            // If we thought we were already in a syscall -- missed
-                            // a return? -- skipping this report doesn't do much
-                            // good.  Might as well force it to be a new entry
-                            // regardless to sync up.
-                            tcp->flags &= ~TCB_INSYSCALL;
-                            tcp->scno = stop.code;
-                            trace_syscall(tcp);
-                            break;
-
-                    case gdb_stop_syscall_return:
-                            // If we missed the entry, recording a return will only
-                            // confuse things, so let's just report the good ones.
-                            if (exiting(tcp)) {
-                                    tcp->scno = stop.code;
-                                    trace_syscall(tcp);
-                            }
-                            break;
-
-                    case gdb_stop_signal:
-                            {
-                                    siginfo_t *si = NULL;
-                                    size_t siginfo_size;
-                                    char *siginfo_reply =
-                                            gdb_xfer_read(gdb, "siginfo", "", &siginfo_size);
-                                    if (siginfo_reply && siginfo_size == sizeof(siginfo_t))
-                                            si = (siginfo_t *) siginfo_reply;
-
-                                    // XXX gdbserver returns "native" siginfo of 32/64-bit target
-                                    // but strace expects its own format as PTRACE_GETSIGINFO
-                                    // would have given it.
-                                    // (i.e. need to reverse siginfo_fixup)
-                                    // ((i.e. siginfo_from_compat_siginfo))
-
-                                    gdb_sig = stop.code;
-                                    print_stopped(tcp, si, gdb_signal_to_target(tcp, gdb_sig));
-                                    free(siginfo_reply);
-                            }
-                            break;
-            }
-
-            if (stop.code == __NR_exit_group) {
-        	    free(stop.reply);
-        	    return false;
-            }
-
-	    free(stop.reply);
-	    stop.reply = pop_notification(&stop.size);
-	    if (stop.reply)	// cached out of order notification?
-	         stop = gdb_recv_stop(&stop);
-	    else
-	         break;
-	    } while (true);
+	if (stop.size == 0)
+		error_msg_and_die("gdb server gave an empty stop reply!?");
+	switch (stop.type) {
+	case gdb_stop_unknown:
+		error_msg_and_die("gdb server stop reply unknown: %.*s",
+				(int)stop.size, stop.reply);
+		break;
+	case gdb_stop_error:
+		// vCont error -> no more processes
+		free(stop.reply);
+		return TE_BREAK;
+	default:
+		break;
+	}
 
 
-        if (gdb_sig) {
-                if (gdb_vcont) {
-                        // send the signal to this target and continue everyone else
-                        char cmd[] = "vCont;Cxx:xxxxxxxx;c";
-                        sprintf(cmd, "vCont;C%02x:%x;c", gdb_sig, tid);
-                        gdb_send(gdb, cmd, strlen(cmd));
-                } else {
-                        // just send the signal
-                        char cmd[] = "Cxx";
-                        sprintf(cmd, "C%02x", gdb_sig);
-                        gdb_send(gdb, cmd, strlen(cmd));
-                }
-        } else {
-                if (gdb_vcont) {
-		        // For non-stop use $vCont;c:pid.tid where pid.tid is
-		        // the thread gdbserver is focused on
-		        char cmd[] = "vCont;c:xxxxxxxx.xxxxxxxx";
+	tid = -1;
+	tcp = NULL;
 
-		        struct tcb *general_tcp = gdb_find_thread(general_tid, true);
-		        if (gdb_has_non_stop (gdb) && general_pid != general_tid
-		        		&& general_tcp->flags & TCB_GDB_CONT_PID_TID)
-		        	sprintf(cmd, "vCont;c:p%x.%x", general_pid, general_tid);
-		        else
+	if (gdb_multiprocess) {
+		tid = stop.tid;
+		tcp = gdb_find_thread(tid, true);
+		/* Set current output file */
+		current_tcp = tcp;
+	} else if (current_tcp) {
+		tcp = current_tcp;
+		tid = tcp->pid;
+	}
+	if (tid < 0 || tcp == NULL)
+		error_msg_and_die("couldn't read tid from stop reply: %.*s",
+				(int)stop.size, stop.reply);
+
+	switch (stop.type) {
+	case gdb_stop_exited:
+		*pstatus = W_EXITCODE(stop.code, 0);
+		return TE_EXITED;
+
+	case gdb_stop_terminated:
+		*pstatus = W_EXITCODE(0, gdb_signal_to_target(tcp, stop.code));
+		return TE_SIGNALLED;
+
+        case gdb_stop_unknown:	// already handled above
+        case gdb_stop_error:	// already handled above
+        case gdb_stop_trap:	// misc trap
+        	break;
+	case gdb_stop_syscall_entry:
+		// If we thought we were already in a syscall -- missed
+		// a return? -- skipping this report doesn't do much
+		// good.  Might as well force it to be a new entry
+		// regardless to sync up.
+		tcp->flags &= ~TCB_INSYSCALL;
+		tcp->scno = stop.code;
+		gdb_sig = stop.code;
+		*pstatus = gdb_signal_to_target(tcp, gdb_sig);
+		return TE_SYSCALL_STOP;
+
+	case gdb_stop_syscall_return:
+		// If we missed the entry, recording a return will only
+		// confuse things, so let's just report the good ones.
+		if (exiting(tcp)) {
+			tcp->scno = stop.code;
+			gdb_sig = stop.code;
+			*pstatus = gdb_signal_to_target(tcp, gdb_sig);
+			return TE_SYSCALL_STOP;
+		}
+		break;
+
+	case gdb_stop_signal:
+	{
+		size_t siginfo_size;
+		char *siginfo_reply =
+				gdb_xfer_read(gdb, "siginfo", "", &siginfo_size);
+		if (siginfo_reply && siginfo_size == sizeof(siginfo_t))
+			si = (siginfo_t *) siginfo_reply;
+
+		// XXX gdbserver returns "native" siginfo of 32/64-bit target
+		// but strace expects its own format as PTRACE_GETSIGINFO
+		// would have given it.
+		// (i.e. need to reverse siginfo_fixup)
+		// ((i.e. siginfo_from_compat_siginfo))
+
+		gdb_sig = stop.code;
+		*pstatus = gdb_signal_to_target(tcp, gdb_sig);
+		free(siginfo_reply);
+		return TE_SIGNAL_DELIVERY_STOP;
+	}
+
+	default:
+		// TODO Do we need to handle gdb_multiprocess here?
+		break;
+	}
+
+	if (stop.code == __NR_exit_group) {
+		return TE_GROUP_STOP;
+	}
+
+	return TE_RESTART;
+}
+
+// Returns true iff the main trace loop has to contionue.
+// The gdb connection should be ready for a stop reply on entry,
+// and we'll leave it the same way if we return true.
+bool
+gdb_dispatch_event(enum trace_event ret, int *pstatus, siginfo_t *si)
+{
+	int gdb_sig = 0;
+	struct tcb *tcp = current_tcp;
+	pid_t tid = current_tcp->pid;
+	unsigned int sig = 0;
+
+
+	if (! (tcp->flags & TCB_GDB_CONT_PID_TID)) {
+		char cmd[] = "Hgxxxxxxxx";
+		sprintf(cmd, "Hg%x.%x", general_pid, general_tid);
+		if (debug_flag)
+			printf ("%s %s\n", __FUNCTION__, cmd);
+	}
+	// TODO need code equivalent to PTRACE_EVENT_EXEC?
+
+	/* Is this the very first time we see this tracee stopped? */
+	if (tcp->flags & TCB_STARTUP) {
+		tcp->flags &= ~TCB_STARTUP;
+		if (get_scno(tcp) == 1)
+			tcp->s_prev_ent = tcp->s_ent;
+	}
+
+	// TODO cflag means we need to update tcp->dtime/stime
+	// usually through wait rusage, but how can we do it?
+
+	switch (ret) {
+	case TE_BREAK:
+		return false;
+
+	case TE_RESTART:
+		break;
+
+	case TE_SYSCALL_STOP:
+		trace_syscall(tcp, &sig);
+		break;
+
+	case TE_SIGNAL_DELIVERY_STOP:
+		sig = *pstatus;
+		gdb_sig = stop.code;
+		print_stopped(tcp, si, *pstatus);
+		break;
+
+	case TE_SIGNALLED:
+		print_signalled(tcp, tid, *pstatus);
+		droptcb(tcp);
+		return false;
+
+	case TE_EXITED:
+		print_exited(tcp, tid, *pstatus);
+		droptcb(tcp);
+		return false;
+
+	case TE_GROUP_STOP:
+		sig = *pstatus;
+		return false;
+
+	case TE_STOP_BEFORE_EXECVE:
+	case TE_STOP_BEFORE_EXIT:
+		// TODO handle this?
+		return false;
+
+	case TE_NEXT:
+		break;
+	}
+
+
+	free(stop.reply);
+	// TODO Do we need to handle pop_notification here?
+
+	if (gdb_sig) {
+		if (gdb_vcont) {
+			// send the signal to this target and continue everyone else
+			char cmd[] = "vCont;Cxx:xxxxxxxx;c";
+			sprintf(cmd, "vCont;C%02x:%x;c", gdb_sig, tid);
+			gdb_send(gdb, cmd, strlen(cmd));
+		} else {
+			// just send the signal
+			char cmd[] = "Cxx";
+			sprintf(cmd, "C%02x", gdb_sig);
+			gdb_send(gdb, cmd, strlen(cmd));
+		}
+	} else {
+		if (gdb_vcont) {
+			// For non-stop use $vCont;c:pid.tid where pid.tid is
+			// the thread gdbserver is focused on
+			char cmd[] = "vCont;c:xxxxxxxx.xxxxxxxx";
+
+			struct tcb *general_tcp = gdb_find_thread(general_tid, true);
+			if (gdb_has_non_stop (gdb) && general_pid != general_tid
+					&& general_tcp->flags & TCB_GDB_CONT_PID_TID)
+				sprintf(cmd, "vCont;c:p%x.%x", general_pid, general_tid);
+			else
 				sprintf(cmd, "vCont;c");
-                        gdb_send(gdb, cmd, sizeof(cmd) - 1);
+			gdb_send(gdb, cmd, sizeof(cmd) - 1);
 		} else {
 			static const char cmd[] = "c";
-                        gdb_send(gdb, cmd, sizeof(cmd) - 1);
-                }
-        }
-        return true;
+			gdb_send(gdb, cmd, sizeof(cmd) - 1);
+		}
+	}
+
+	return true;
 }
 
 
@@ -1007,7 +1040,7 @@ gdb_getfdpath(struct tcb *tcp, int fd, char *buf, unsigned bufsize)
 
 
 bool
-gdb_verify_args (char *username, bool daemon, unsigned int *follow_fork)
+gdb_verify_args (const char *username, bool daemon, unsigned int *follow_fork)
 {
 	if (username) {
 		error_msg_and_die("-u and -G are mutually exclusive");
@@ -1042,7 +1075,8 @@ gdb_handle_arg (char arg, char *optarg)
 	backend.start_init = gdb_start_init;
 	backend.startup_attach = gdb_startup_attach;
 	backend.startup_child = gdb_startup_child;
-	backend.trace = gdb_trace;
+	backend.next_event = gdb_next_event;
+	backend.dispatch_event = gdb_dispatch_event;
 	backend.umoven = gdb_umoven;
 	backend.umovestr = gdb_umovestr;
 	backend.upeek_ = gdb_upeek;
