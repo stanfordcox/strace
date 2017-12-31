@@ -387,9 +387,10 @@ gdb_start_init(void)
 	char multi_cmd[] = "qSupported:multiprocess+;QThreadEvents+"
 		";fork-events+;vfork-events+;exec-events+";
 
-	sprintf(multi_cmd, "qSupported:multiprocess+;QThreadEvents+;%s%s",
-			followfork ? ";fork-events+;vfork-events+" : "",
-			detach_on_execve ? ";exec-events" : "");
+	snprintf(multi_cmd, sizeof(multicmd), "qSupported:multiprocess+;"
+		 "QThreadEvents+;%s%s",
+		 followfork ? ";fork-events+;vfork-events+" : "",
+		 detach_on_execve ? ";exec-events" : "");
 
 	gdb_send_str(gdb, multi_cmd);
 
@@ -491,7 +492,7 @@ gdb_find_thread(int tid, bool current)
 
 		if (!current) {
 			char cmd[] = "Hgxxxxxxxx";
-			sprintf(cmd, "Hg%x", tid);
+			snprintf(cmd, sizeof(cmd), "Hg%x", tid);
 			gdb_send_str(gdb, cmd);
 			current = gdb_ok();
 			if (!current)
@@ -661,7 +662,7 @@ gdb_attach_tcb(struct tcb *tcp)
 	if (gdb_ok())
 	       gdb_set_non_stop(gdb, true);
 
-	sprintf(vattach_cmd, "vAttach;%x", tcp->pid);
+	snprintf(vattach_cmd, sizeof(vattach_cmd), "vAttach;%x", tcp->pid);
 	gdb_send_str(gdb, vattach_cmd);
 
 	do {
@@ -681,13 +682,14 @@ gdb_attach_tcb(struct tcb *tcp)
 		     stop.type = gdb_stop_unknown;
 		     break;
 		}
-		sprintf(h_cmd, "Hg%x.-1", tcp->pid);
+		snprintf(h_cmd, sizeof(h_cmd), "Hg%x.-1", tcp->pid);
 		gdb_send_str(gdb, h_cmd);
 		if (!gdb_ok()) {
 		     stop.type = gdb_stop_unknown;
 		     break;
 		}
-		sprintf(vcont_cmd, "vCont;t:p%x.-1", tcp->pid);
+		snprintf(vcont_cmd, sizeof(vcont_cmd),
+			 "vCont;t:p%x.-1", tcp->pid);
 		gdb_send_str(gdb, vcont_cmd);
 		stop = gdb_recv_stop(NULL);
 	} while (0);
@@ -751,7 +753,7 @@ gdb_detach(struct tcb *tcp)
 		return;
 	if (gdb_multiprocess) {
 		char cmd[] = "D;XXXXXXXX";
-		sprintf(cmd, "D;%x", tcp->pid);
+		snprintf(cmd, sizeof(cmd), "D;%x", tcp->pid);
 		gdb_send_str(gdb, cmd);
 	} else {
 		gdb_send_cstr(gdb, "D");
@@ -760,7 +762,7 @@ gdb_detach(struct tcb *tcp)
 	if (!gdb_ok()) {
 		/* is it still alive? */
 		char cmd[] = "T;XXXXXXXX";
-		sprintf(cmd, "T;%x", tcp->pid);
+		snprintf(cmd, sizeof(cmd), "T;%x", tcp->pid);
 		gdb_send_str(gdb, cmd);
 		if (gdb_ok())
 			error_msg("GDB server failed to detach %d", tcp->pid);
@@ -909,7 +911,7 @@ gdb_dispatch_event(enum trace_event ret, int *pstatus, void *si_p)
 	tid = tcp->pid;
 	if (! (tcp->flags & TCB_GDB_CONT_PID_TID)) {
 		char cmd[] = "Hgxxxxxxxx";
-		sprintf(cmd, "Hg%x.%x", general_pid, general_tid);
+		snprintf(cmd, sizeof(cmd), "Hg%x.%x", general_pid, general_tid);
 		if (debug_flag)
 			error_msg("%s %s\n", __FUNCTION__, cmd);
 	}
@@ -983,12 +985,13 @@ gdb_dispatch_event(enum trace_event ret, int *pstatus, void *si_p)
 		if (gdb_vcont) {
 			/* send the signal to this target and continue everyone else */
 			char cmd[] = "vCont;Cxx:xxxxxxxx;c";
-			sprintf(cmd, "vCont;C%02x:%x;c", gdb_sig, tid);
+			snprintf(cmd, sizeof(cmd),
+				 "vCont;C%02x:%x;c", gdb_sig, tid);
 			gdb_send_str(gdb, cmd);
 		} else {
 			/* just send the signal */
 			char cmd[] = "Cxx";
-			sprintf(cmd, "C%02x", gdb_sig);
+			snprintf(cmd, sizeof(cmd), "C%02x", gdb_sig);
 			gdb_send_str(gdb, cmd);
 		}
 	} else {
@@ -1001,9 +1004,10 @@ gdb_dispatch_event(enum trace_event ret, int *pstatus, void *si_p)
 			struct tcb *general_tcp = gdb_find_thread(general_tid, true);
 			if (gdb_has_non_stop(gdb) && general_pid != general_tid
 					&& general_tcp->flags & TCB_GDB_CONT_PID_TID)
-				sprintf(cmd, "vCont;c:p%x.%x", general_pid, general_tid);
+				snprintf(cmd, sizeof(cmd), "vCont;c:p%x.%x",
+					 general_pid, general_tid);
 			else
-				sprintf(cmd, "vCont;c");
+				snprintf(cmd, sizeof(cmd), "vCont;c");
 			gdb_send_str(gdb, cmd);
 		} else {
 			gdb_send_cstr(gdb, "c");
@@ -1060,7 +1064,7 @@ gdb_read_mem(pid_t tid, long addr, unsigned int len, bool check_nil, char *out)
 	while (len) {
 		char cmd[] = "mxxxxxxxxxxxxxxxx,xxxx";
 		unsigned int chunk_len = len < 0x1000 ? len : 0x1000;
-		sprintf(cmd, "m%lx,%x", addr, chunk_len);
+		snprintf(cmd, sizeof(cmd), "m%lx,%x", addr, chunk_len);
 		gdb_send_str(gdb, cmd);
 
 		size_t size;
@@ -1103,7 +1107,7 @@ gdb_write_mem(pid_t tid, long addr, unsigned int len, char *buffer)
 
 	/* NB: this assumes gdbserver's current thread is also tid.  If that
 	 * may not be the case, we should send "HgTID" first, and restore.  */
-	sprintf(cmd, "X%lx,%x:", addr, len);
+	snprintf(cmd, sizeof(cmd), "X%lx,%x:", addr, len);
 	j = strlen(cmd);
 	for (i = 0; i < len; i++)
 		cmd[j++] = buffer[i];
