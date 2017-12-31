@@ -59,6 +59,7 @@ struct gdb_conn {
 	bool non_stop;
 };
 
+/* XXX move inside gdb_conn */
 /* non-stop notifications (see gdb_recv_stop) */
 struct notifications_s {
     int size;
@@ -324,6 +325,8 @@ send_packet(FILE *out, const char *command, size_t size)
 		fflush(stdout);
 	}
 	fputc('$', out); /* packet start */
+	/* XXX Check for partial writes. */
+	/* XXX Why not fputs? Is \0 allowed in the payload? */
 	fwrite(command, 1, size, out); /* payload */
 	fprintf(out, "#%02x", sum); /* packet end, checksum */
 	fflush(out);
@@ -345,6 +348,13 @@ gdb_send(struct gdb_conn *conn, const char *command, size_t size)
 		if (!conn->ack)
 			break;
 
+		/* XXX
+		 * https://sourceware.org/gdb/onlinedocs/gdb/Notification-Packets.html
+		 * "Specifically, notifications may appear when GDB is not
+		 * otherwise reading input from the stub, or when GDB is
+		 * expecting to read a normal synchronous response or a ‘+’/‘-’
+		 * acknowledgment to a packet it has sent."
+		 */
 		/* look for '+' ACK or '-' NACK/resend */
 		acked = fgetc_unlocked(conn->in) == '+';
 	} while (!acked);
@@ -368,9 +378,21 @@ push_notification(char *packet, size_t packet_size)
 {
 	int idx;
 
+	/* XXX signals, exec, fork, vfork, vforkdone, create? */
 	if (strncmp(packet+3, "syscall", 7) != 0)
 		return;
 
+	/* XXX
+	 * https://sourceware.org/gdb/onlinedocs/gdb/Notification-Packets.html
+	 * states that "Only one notification at a time may be pending; if
+	 * additional events occur before GDB has acknowledged the previous
+	 * notification, they must be queued by the stub for later synchronous
+	 * transmission in response to ack packets from GDB. Because the
+	 * notification mechanism is unreliable, the stub is permitted to resend
+	 * a notification if it believes GDB may not have received it." Do we
+	 * really need a multi-item buffer for it? We should overwrite the
+	 * last received one, shouldn't we?
+	 */
 	if (notifications.size == 0) {
 		notifications.size = 32;
 		notifications.start = 0;
@@ -422,6 +444,7 @@ have_notification(void)
 }
 
 
+/* XXX This one is not used currently */
 void
 dump_notifications(char *packet, int pid, int tid)
 {
@@ -452,6 +475,7 @@ recv_packet(FILE *in, size_t *ret_size, bool* ret_sum_ok)
 
 	while ((c = fgetc_unlocked(in)) != EOF) {
 		sum += (uint8_t)c;
+		/* XXX Rewrite to FSM */
 		switch (c) {
 		case '$': /* new packet?  start over... */
 			i = 0;
@@ -533,7 +557,7 @@ recv_packet(FILE *in, size_t *ret_size, bool* ret_sum_ok)
 					sum += c2;
 					continue;
 				}
-			}
+			} /* XXX handle "else" clause */
 		}
 
 		/* XOR an escaped character */
@@ -577,6 +601,8 @@ gdb_recv(struct gdb_conn *conn, size_t *size, bool want_stop)
 		/* (See gdb_recv_stop for non-stop packet order)
 		   If a notification arrived while expecting another packet
 		   type, then cache the notification. */
+		/* XXX it's better to preserve (some of) %Stop: header */
+		/* XXX What if checksum is wrong? */
 		if (! want_stop && strncmp(reply, "T05syscall", 10) == 0) {
 			push_notification(reply, *size);
 			reply = recv_packet(conn->in, size, &acked);
@@ -661,10 +687,12 @@ gdb_xfer_read(struct gdb_conn *conn,
 		case 'E':
 			error = gdb_decode_hex_str(reply + 1);
 			break;
+
+		/* XXX handle other cases? */
 		}
 		free(reply);
 		break;
-	} while (0);
+	} while (0); /* XXX handle greater size */
 
 	free(data);
 	*ret_size = error;
@@ -688,6 +716,7 @@ gdb_vfile(struct gdb_conn *conn, const char *operation, const char *parameters)
 	char *cmd;
 	int cmd_size = asprintf(&cmd, "vFile:%s:%s", operation, parameters);
 	if (cmd_size < 0) {
+		/* XXX Returns automatic variable! */
 		return res;
 	}
 
@@ -710,6 +739,7 @@ gdb_vfile(struct gdb_conn *conn, const char *operation, const char *parameters)
 		if (errnum)
 			res.errnum = gdb_decode_signed_hex_str(errnum + 1);
 	}
+	/* XXX Returns automatic variable! */
 	return res;
 }
 
@@ -729,7 +759,7 @@ gdb_readlink(struct gdb_conn *conn, const char *linkpath,
 		&& res.result == (int64_t)res.attachment_size) {
 		size_t data_len = res.attachment_size;
 		if (data_len >= bufsize)
-			data_len = bufsize - 1; /* truncate -- ok? */
+			data_len = bufsize - 1; /* XXX truncate -- ok? */
 		memcpy(buf, res.attachment, data_len);
 		buf[data_len] = 0;
 		ret = data_len;

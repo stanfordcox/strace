@@ -48,15 +48,19 @@ void print_exited(struct tcb *tcp, const int pid, int status);
 void print_stopped(struct tcb *tcp, const siginfo_t *si, const unsigned int sig);
 void set_sigaction(int signo, void (*sighandler)(int), struct sigaction *oldact);
 
+/* XXX Those are extern, are they really needed? */
 struct tcb *current_tcp;
 int strace_child;
 int detach_on_execve;
 static volatile int interrupted;
 char *gdbserver = NULL;
+/* XXX Move pid/tid to gdb_conn? */
 static int general_pid; /* process id that gdbserver is focused on */
 static int general_tid; /* thread id that gdbserver is focused on */
+/* XXX stop is needed only to next_event */
 static struct gdb_stop_reply stop;
 static struct gdb_conn* gdb = NULL;
+/* XXX Move/merge this to/with gdb_conn */
 static bool gdb_extended = false;
 static bool gdb_multiprocess = false;
 static bool gdb_vcont = false;
@@ -225,6 +229,7 @@ gdb_recv_signal(struct gdb_stop_reply *stop)
 				stop->code = gdb_decode_hex_str(r);
 			}
 		}
+		/* TODO exec, fork, vfork, vforkdone */
 	}
 
 	/* TODO guess architecture by the size of reported registers? */
@@ -367,6 +372,10 @@ gdb_start_init(void)
 	if (gdbserver[0] == '|')
 		gdb = gdb_begin_command(gdbserver + 1);
 	else if (strchr(gdbserver, ':') && !strchr(gdbserver, '/')) {
+		/* XXX I suggest changing ";" to ":" as it matches in-option
+		 *     sub-option separation in other options, such as
+		 *     -e inject, and allows avoiding quoting in some cases
+		 */
 		if (strchr(gdbserver, ';')) {
 			const char *stop_option;
 			gdbserver = strtok(gdbserver, ";");
@@ -401,6 +410,7 @@ gdb_start_init(void)
 	if (!gdb_multiprocess)
 		error_msg("couldn't enable GDB server multiprocess mode");
 	if (followfork) {
+		/* XXX This will match on vfork-events+, needs better parsing */
 		gdb_fork = strstr(reply, "fork-events+") != NULL;
 		if (!gdb_fork)
 			error_msg("couldn't enable GDB server fork events handling");
@@ -419,11 +429,17 @@ gdb_start_init(void)
 	if (!gdb_extended)
 		error_msg("couldn't enable GDB server extended mode");
 
+	/* XXX isn't this depends on strace's -I setting? */
+	/* TODO: check where signals are passed to  */
 	gdb_send_cstr(gdb,
 		      "QPassSignals:e;10;14;17;1a;1b;1c;21;24;25;2c;4c;97;");
 	if (!gdb_ok())
 		error_msg("couldn't enable GDB server signal passing");
 
+	/* XXX this looks strange. Why 0x97 - isn't it GDB_SIGNAL_LAST?
+	 *     It's probably better to generate that list programmatically.
+	 *     Also, it's not entirely obvious what signals are excluded and
+	 *     why - additional points for programmatical generation. */
 	gdb_send_cstr(gdb,
 		      "QProgramSignals:0;1;3;4;6;7;8;9;a;b;c;d;e;f;10;11;12;"
 		      "13;14;15;16;17;18;19;1a;1b;1c;1d;1e;1f;20;21;22;23;24;"
@@ -560,6 +576,7 @@ gdb_end_init(void)
 	 * now continue them all so the next reply will be a stop
 	 * packet */
 	gdb_send_str(gdb, gdb_vcont ? "vCont;c" : "c");
+	/* TODO Factor out process restarting */
 }
 
 void
@@ -713,6 +730,7 @@ gdb_attach_tcb(struct tcb *tcp)
 			error_msg_and_die("Cannot connect to process %d: "
 					"GDB server failed vAttach with %.*s",
 					tcp->pid, (int)stop.size, stop.reply);
+			/* XXX fall through? */
 		case gdb_stop_trap:
 			break;
 		case gdb_stop_signal:
@@ -1169,6 +1187,7 @@ bool
 gdb_verify_args(const char *username, bool daemon, unsigned int *follow_fork)
 {
 	if (username) {
+		/* XXX We can run local gdb stub under a different user */
 		error_msg_and_die("-u and -G are mutually exclusive");
 	}
 
@@ -1177,6 +1196,10 @@ gdb_verify_args(const char *username, bool daemon, unsigned int *follow_fork)
 	}
 
 	if (!*follow_fork) {
+		/* XXX it more affects the behaviour on the discovery of the new
+		 *     process, so we can support no-follow-fork by detaching
+		 *     new childs as we already doing now with unexpected ones.
+		 */
 		error_msg("-G is always multithreaded, implies -f");
 		*follow_fork = 1;
 	}
