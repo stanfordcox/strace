@@ -1839,10 +1839,6 @@ init(int argc, char *argv[])
 	if (argc < 0)
 		error_msg_and_help("must have command line arguments");
 
-	if (!argc && daemonized_tracer) {
-		error_msg_and_help("PROG [ARGS] must be specified with -D");
-	}
-
 	if (optF) {
 		if (followfork) {
 			error_msg("deprecated option -F ignored");
@@ -1887,6 +1883,10 @@ init(int argc, char *argv[])
 	if (!tracing_backend_init(argc, argv))
 		error_msg_and_die("Cannot initialize backend \"%s\".",
 				  tracing_backend_name());
+
+	if (!argc && daemonized_tracer) {
+		error_msg_and_help("PROG [ARGS] must be specified with -D");
+	}
 
 	for (cnt = 0; cnt < pathtrace_count; cnt++)
 		pathtrace_select(pathtrace_paths[cnt]);
