@@ -91,7 +91,7 @@ Try '$STRACE_EXE -h' for more information.
 __EOF__
 diff -u -- "$EXP" "$LOG" > /dev/null || {
 	cat > "$EXP" <<- '__EOF__'
-	strace: must have PROG [ARGS] or -p PID
+	strace: must have command line arguments
 	Try 'strace -h' for more information.
 	__EOF__
 	match_diff "$LOG" "$EXP" \

@@ -1639,6 +1639,9 @@ tracing_backend_init(int argc, char *argv[])
 {
 	os_release = get_os_release();
 
+	if (!nprocs && !argc)
+		error_msg_and_help("must have PROG [ARGS] or -p PID");
+
 	if (followfork)
 		ptrace_setoptions |= PTRACE_O_TRACECLONE |
 				     PTRACE_O_TRACEFORK |
@@ -1833,9 +1836,8 @@ init(int argc, char *argv[])
 	argv += optind;
 	argc -= optind;
 
-	if (argc < 0 || (!nprocs && !argc)) {
-		error_msg_and_help("must have PROG [ARGS] or -p PID");
-	}
+	if (argc < 0)
+		error_msg_and_help("must have command line arguments");
 
 	if (!argc && daemonized_tracer) {
 		error_msg_and_help("PROG [ARGS] must be specified with -D");
