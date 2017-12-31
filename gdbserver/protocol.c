@@ -350,6 +350,11 @@ gdb_send(struct gdb_conn *conn, const char *command, size_t size)
 	} while (!acked);
 }
 
+void
+gdb_send_str(struct gdb_conn *conn, const char *command)
+{
+	gdb_send(conn, command, strlen(command));
+}
 
 /* push_notification/pop_notification caches notifications which
  *   arrive via the following dialogue:

@@ -303,7 +303,7 @@ gdb_recv_stop(struct gdb_stop_reply *stop_reply)
 	if (gdb_has_non_stop(gdb) && (stop.reply[0] == 'T')) {
 		do {
 			size_t this_size;
-			gdb_send(gdb,"vStopped",8);
+			gdb_send_cstr(gdb, "vStopped");
 			reply = gdb_recv(gdb, &this_size, true);
 			if (strcmp(reply, "OK") == 0)
 				break;
@@ -391,7 +391,7 @@ gdb_start_init(void)
 			followfork ? ";fork-events+;vfork-events+" : "",
 			detach_on_execve ? ";exec-events" : "");
 
-	gdb_send(gdb, multi_cmd, sizeof(multi_cmd) - 1);
+	gdb_send_str(gdb, multi_cmd);
 
 	size_t size;
 	bool gdb_fork;
@@ -413,24 +413,30 @@ gdb_start_init(void)
 	}
 	free(reply);
 
-	static const char extended_cmd[] = "!";
-	gdb_send(gdb, extended_cmd, sizeof(extended_cmd) - 1);
+	gdb_send_cstr(gdb, "!");
 	gdb_extended = gdb_ok();
 	if (!gdb_extended)
 		error_msg("couldn't enable GDB server extended mode");
 
-	static const char pass_signals[] = "QPassSignals:e;10;14;17;1a;1b;1c;21;24;25;2c;4c;97;";
-	gdb_send(gdb, pass_signals, sizeof(pass_signals) - 1);
+	gdb_send_cstr(gdb,
+		      "QPassSignals:e;10;14;17;1a;1b;1c;21;24;25;2c;4c;97;");
 	if (!gdb_ok())
 		error_msg("couldn't enable GDB server signal passing");
 
-	static const char program_signals[] = "QProgramSignals:0;1;3;4;6;7;8;9;a;b;c;d;e;f;10;11;12;13;14;15;16;17;18;19;1a;1b;1c;1d;1e;1f;20;21;22;23;24;25;26;27;28;29;2a;2b;2c;2d;2e;2f;30;31;32;33;34;35;36;37;38;39;3a;3b;3c;3d;3e;3f;40;41;42;43;44;45;46;47;48;49;4a;4b;4c;4d;4e;4f;50;51;52;53;54;55;56;57;58;59;5a;5b;5c;5d;5e;5f;60;61;62;63;64;65;66;67;68;69;6a;6b;6c;6d;6e;6f;70;71;72;73;74;75;76;77;78;79;7a;7b;7c;7d;7e;7f;80;81;82;83;84;85;86;87;88;89;8a;8b;8c;8d;8e;8f;90;91;92;93;94;95;96;97;";
-	gdb_send(gdb, program_signals, sizeof(program_signals) - 1);
+	gdb_send_cstr(gdb,
+		      "QProgramSignals:0;1;3;4;6;7;8;9;a;b;c;d;e;f;10;11;12;"
+		      "13;14;15;16;17;18;19;1a;1b;1c;1d;1e;1f;20;21;22;23;24;"
+		      "25;26;27;28;29;2a;2b;2c;2d;2e;2f;30;31;32;33;34;35;36;"
+		      "37;38;39;3a;3b;3c;3d;3e;3f;40;41;42;43;44;45;46;47;48;"
+		      "49;4a;4b;4c;4d;4e;4f;50;51;52;53;54;55;56;57;58;59;5a;"
+		      "5b;5c;5d;5e;5f;60;61;62;63;64;65;66;67;68;69;6a;6b;6c;"
+		      "6d;6e;6f;70;71;72;73;74;75;76;77;78;79;7a;7b;7c;7d;7e;"
+		      "7f;80;81;82;83;84;85;86;87;88;89;8a;8b;8c;8d;8e;8f;90;"
+		      "91;92;93;94;95;96;97;";
 	if (!gdb_ok())
 		error_msg("couldn't enable GDB server signal passing");
 
-	static const char vcont_cmd[] = "vCont?";
-	gdb_send(gdb, vcont_cmd, sizeof(vcont_cmd) - 1);
+	gdb_send_cstr(gdb, "vCont?");
 	reply = gdb_recv(gdb, &size, false);
 	gdb_vcont = strncmp(reply, "vCont", 5) == 0;
 	if (!gdb_vcont)
@@ -464,7 +470,7 @@ gdb_init_syscalls(void)
 		asprintf ((char**)&syscall_set, "%s%s", syscall_cmd, syscall_set);
 	else
 		syscall_set = syscall_cmd;
-	gdb_send(gdb, syscall_set, strlen(syscall_set));
+	gdb_send_str(gdb, syscall_set);
 	if (!gdb_ok())
 		error_msg("couldn't enable GDB server syscall catching");
 }
@@ -486,7 +492,7 @@ gdb_find_thread(int tid, bool current)
 		if (!current) {
 			char cmd[] = "Hgxxxxxxxx";
 			sprintf(cmd, "Hg%x", tid);
-			gdb_send(gdb, cmd, strlen(cmd));
+			gdb_send_str(gdb, cmd);
 			current = gdb_ok();
 			if (!current)
 				error_msg("couldn't set GDB server to thread %d", tid);
@@ -503,9 +509,7 @@ gdb_enumerate_threads(void)
 	 * -> m thread,thread
 	 * -> l (finished) */
 
-	static const char qfcmd[] = "qfThreadInfo";
-
-	gdb_send(gdb, qfcmd, sizeof(qfcmd) - 1);
+	gdb_send_cstr(gdb, "qfThreadInfo");
 
 	size_t size;
 	char *reply = gdb_recv(gdb, &size, false);
@@ -523,8 +527,7 @@ gdb_enumerate_threads(void)
 
 		free(reply);
 
-		static const char qscmd[] = "qsThreadInfo";
-		gdb_send(gdb, qscmd, sizeof(qscmd) - 1);
+		gdb_send_cstr(gdb, "qsThreadInfo");
 		reply = gdb_recv(gdb, &size, false);
 	}
 
@@ -555,13 +558,7 @@ gdb_end_init(void)
 	/* Everything was stopped from startup_child/startup_attach,
 	 * now continue them all so the next reply will be a stop
 	 * packet */
-	if (gdb_vcont) {
-		static const char cmd[] = "vCont;c";
-		gdb_send(gdb, cmd, sizeof(cmd) - 1);
-	} else {
-		static const char cmd[] = "c";
-		gdb_send(gdb, cmd, sizeof(cmd) - 1);
-	}
+	gdb_send_str(gdb, gdb_vcont ? "vCont;c" : "c");
 }
 
 void
@@ -591,8 +588,7 @@ gdb_startup_child(char **argv)
 	}
 
 	if (gdb_nonstop) {
-		static const char nonstop_cmd[] = "QNonStop:1";
-		gdb_send(gdb, nonstop_cmd, sizeof(nonstop_cmd) - 1);
+		gdb_send_cstr(gdb, "QNonStop:1");
 		if (!gdb_ok())
 			gdb_nonstop = false;
 	}
@@ -659,15 +655,14 @@ gdb_attach_tcb(struct tcb *tcp)
 				"processes");
 
 	struct gdb_stop_reply stop;
-	static const char nonstop_cmd[] = "QNonStop:1";
 	char vattach_cmd[] = "vAttach;XXXXXXXX";
 
-	gdb_send(gdb, nonstop_cmd, sizeof(nonstop_cmd) - 1);
+	gdb_send_cstr(gdb, "QNonStop:1");
 	if (gdb_ok())
 	       gdb_set_non_stop(gdb, true);
 
 	sprintf(vattach_cmd, "vAttach;%x", tcp->pid);
-	gdb_send(gdb, vattach_cmd, strlen(vattach_cmd));
+	gdb_send_str(gdb, vattach_cmd);
 
 	do {
 		/*
@@ -687,26 +682,25 @@ gdb_attach_tcb(struct tcb *tcp)
 		     break;
 		}
 		sprintf(h_cmd, "Hg%x.-1", tcp->pid);
-		gdb_send(gdb, h_cmd, strlen(h_cmd));
+		gdb_send_str(gdb, h_cmd);
 		if (!gdb_ok()) {
 		     stop.type = gdb_stop_unknown;
 		     break;
 		}
 		sprintf(vcont_cmd, "vCont;t:p%x.-1", tcp->pid);
-		gdb_send(gdb, vcont_cmd, strlen(vcont_cmd));
+		gdb_send_str(gdb, vcont_cmd);
 		stop = gdb_recv_stop(NULL);
 	} while (0);
 
 	if (stop.type == gdb_stop_unknown) {
-		static const char nonstop_cmd[] = "QNonStop:0";
-		gdb_send(gdb, nonstop_cmd, sizeof(nonstop_cmd) - 1);
+		gdb_send_cstr(gdb, "QNonStop:0");
 		if (gdb_ok())
 			gdb_set_non_stop(gdb, false);
 		else
 			error_msg_and_die("Cannot connect to process %d: "
 					"GDB server doesn't support vAttach!",
 					tcp->pid);
-		gdb_send(gdb, vattach_cmd, strlen(vattach_cmd));
+		gdb_send_str(gdb, vattach_cmd);
 		stop = gdb_recv_stop(NULL);
 		if (stop.size == 0)
 			error_msg_and_die("Cannot connect to process %d: "
@@ -758,17 +752,16 @@ gdb_detach(struct tcb *tcp)
 	if (gdb_multiprocess) {
 		char cmd[] = "D;XXXXXXXX";
 		sprintf(cmd, "D;%x", tcp->pid);
-		gdb_send(gdb, cmd, strlen(cmd));
+		gdb_send_str(gdb, cmd);
 	} else {
-		static const char cmd[] = "D";
-		gdb_send(gdb, cmd, sizeof(cmd) - 1);
+		gdb_send_cstr(gdb, "D");
 	}
 
 	if (!gdb_ok()) {
 		/* is it still alive? */
 		char cmd[] = "T;XXXXXXXX";
 		sprintf(cmd, "T;%x", tcp->pid);
-		gdb_send(gdb, cmd, strlen(cmd));
+		gdb_send_str(gdb, cmd);
 		if (gdb_ok())
 			error_msg("GDB server failed to detach %d", tcp->pid);
 		/* otherwise it's dead, or already detached, fine. */
@@ -991,12 +984,12 @@ gdb_dispatch_event(enum trace_event ret, int *pstatus, void *si_p)
 			/* send the signal to this target and continue everyone else */
 			char cmd[] = "vCont;Cxx:xxxxxxxx;c";
 			sprintf(cmd, "vCont;C%02x:%x;c", gdb_sig, tid);
-			gdb_send(gdb, cmd, strlen(cmd));
+			gdb_send_str(gdb, cmd);
 		} else {
 			/* just send the signal */
 			char cmd[] = "Cxx";
 			sprintf(cmd, "C%02x", gdb_sig);
-			gdb_send(gdb, cmd, strlen(cmd));
+			gdb_send_str(gdb, cmd);
 		}
 	} else {
 		if (gdb_vcont) {
@@ -1011,10 +1004,9 @@ gdb_dispatch_event(enum trace_event ret, int *pstatus, void *si_p)
 				sprintf(cmd, "vCont;c:p%x.%x", general_pid, general_tid);
 			else
 				sprintf(cmd, "vCont;c");
-			gdb_send(gdb, cmd, sizeof(cmd) - 1);
+			gdb_send_str(gdb, cmd);
 		} else {
-			static const char cmd[] = "c";
-			gdb_send(gdb, cmd, sizeof(cmd) - 1);
+			gdb_send_cstr(gdb, "c");
 		}
 	}
 
@@ -1030,7 +1022,7 @@ gdb_get_all_regs(pid_t tid, size_t *size)
 
 	/* NB: this assumes gdbserver's current thread is also tid.  If that
 	 * may not be the case, we should send "HgTID" first, and restore.  */
-	gdb_send(gdb, "g", 1);
+	gdb_send_cstr(gdb, "g");
 	return gdb_recv(gdb, size, false);
 }
 
@@ -1069,7 +1061,7 @@ gdb_read_mem(pid_t tid, long addr, unsigned int len, bool check_nil, char *out)
 		char cmd[] = "mxxxxxxxxxxxxxxxx,xxxx";
 		unsigned int chunk_len = len < 0x1000 ? len : 0x1000;
 		sprintf(cmd, "m%lx,%x", addr, chunk_len);
-		gdb_send(gdb, cmd, strlen(cmd));
+		gdb_send_str(gdb, cmd);
 
 		size_t size;
 		char *reply = gdb_recv(gdb, &size, false);
@@ -1116,7 +1108,7 @@ gdb_write_mem(pid_t tid, long addr, unsigned int len, char *buffer)
 	for (i = 0; i < len; i++)
 		cmd[j++] = buffer[i];
 	cmd[j] = '\0';
-	gdb_send(gdb, cmd, strlen(cmd));
+	gdb_send_str(gdb, cmd);
 	if (!gdb_ok())
 		error_msg("Failed to poke data to GDB server");
 
