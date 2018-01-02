@@ -223,10 +223,11 @@ gdb_recv_signal(struct gdb_stop_reply *stop)
 				gdb_parse_thread(r, &stop->pid, &stop->tid);
 				general_pid = stop->pid;
 				general_tid = stop->tid;
-			} else
+			} else {
 				/* an optional 2nd thread component is the */
 				/* thread that gdbserver is focused on */
 				gdb_parse_thread(r, &general_pid, &general_tid);
+			}
 		} else if (!strcmp(n, "syscall_entry")) {
 			if (stop->type == GDB_STOP_TRAP) {
 				stop->type = GDB_STOP_SYSCALL_ENTRY;
