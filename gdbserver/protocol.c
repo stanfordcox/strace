@@ -319,10 +319,8 @@ send_packet(FILE *out, const char *command, size_t size)
 	 * address.  So just write raw here, and maybe let higher levels
 	 * escape/RLE. */
 
-	if (debug_flag) {
-		error_msg("\tSending packet: $%s", command);
-		fflush(stdout);
-	}
+	debug_msg("\tSending packet: $%s", command);
+
 	fputc('$', out); /* packet start */
 	/* XXX Check for partial writes. */
 	/* XXX Why not fputs? Is \0 allowed in the payload? */
@@ -410,8 +408,8 @@ push_notification(char *packet, size_t packet_size)
 		notifications.packet[idx] = packet;
 	}
 
-	if (debug_flag)
-		printf /*error_msg*/("Pushed %s (%d items in queue)\n", packet, notifications.count);
+	debug_msg("Pushed %s (%d items are now in queue)\n",
+		  packet, notifications.count);
 }
 
 char*
@@ -429,9 +427,8 @@ pop_notification(size_t *size)
 			notifications.start = 0;
 	}
 
-	if (debug_flag) {
-		error_msg("Popped %s (%d items in queue)", packet, notifications.count);
-	}
+	debug_msg("Popped %s (%d items left in queue)",
+		  packet, notifications.count);
 
 	return packet;
 }
@@ -516,10 +513,8 @@ recv_packet(FILE *in, size_t *ret_size, bool* ret_sum_ok)
 
 			reply[i] = '\0';
 
-			if (debug_flag) {
-				error_msg("\tPacket received: %s", reply);
-				fflush(stdout);
-			}
+			debug_msg("\tPacket received: %s", reply);
+
 			return reply;
 
 		case '}': /* escape: next char is XOR 0x20 */

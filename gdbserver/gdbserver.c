@@ -289,11 +289,7 @@ gdb_recv_stop(struct gdb_stop_reply *stop_reply)
 	else
 		stop.reply = gdb_recv(gdb, &stop.size, true);
 
-	if (debug_flag)
-	{
-		error_msg("%s\n", stop.reply);
-		fflush(stdout);
-	}
+	debug_func_msg("%s", stop.reply);
 
 	if (gdb_has_non_stop(gdb) && !stop_reply) {
 		/* non-stop packet order:
@@ -308,8 +304,7 @@ gdb_recv_stop(struct gdb_stop_reply *stop_reply)
 		/* Do we have an out of order notification?  (see gdb_recv) */
 		reply = pop_notification(&stop_size);
 		if (reply) {
-			if (debug_flag)
-				error_msg("popped %s\n", reply);
+			debug_msg("popped %s", reply);
 
 			stop.reply = reply;
 			reply = gdb_recv(gdb, &stop_size, false); /* vContc OK */
@@ -965,8 +960,7 @@ gdb_dispatch_event(enum trace_event ret, int *pstatus, void *si_p)
 		char cmd[] = "Hgxxxxxxxx";
 
 		snprintf(cmd, sizeof(cmd), "Hg%x.%x", general_pid, general_tid);
-		if (debug_flag)
-			error_msg("%s %s\n", __FUNCTION__, cmd);
+		debug_func_msg("%s", cmd);
 	}
 
 	/* TODO need code equivalent to PTRACE_EVENT_EXEC? */
