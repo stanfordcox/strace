@@ -942,10 +942,11 @@ gdb_next_event(int *pstatus, siginfo_t *si)
 	return TE_RESTART;
 }
 
-/* Returns true iff the main trace loop has to continue.  The gdb
+/*
+ * Returns true iff the main trace loop has to continue.  The gdb
  * connection should be ready for a stop reply on entry,p and we'll
- * leave it the same way if we return true. */
-
+ * leave it the same way if we return true.
+ */
 bool
 gdb_dispatch_event(enum trace_event ret, int *pstatus, void *si_p)
 {
@@ -1082,8 +1083,10 @@ gdb_get_all_regs(pid_t tid, size_t *size)
 	if (!gdb)
 		return NULL;
 
-	/* NB: this assumes gdbserver's current thread is also tid.  If that
-	 * may not be the case, we should send "HgTID" first, and restore.  */
+	/*
+	 * NB: this assumes gdbserver's current thread is also tid.  If that
+	 * may not be the case, we should send "HgTID" first, and restore.
+	 */
 	gdb_send_cstr(gdb, "g");
 
 	return gdb_recv(gdb, size, false);
