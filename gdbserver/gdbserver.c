@@ -49,9 +49,10 @@ void print_stopped(struct tcb *tcp, const siginfo_t *si, const unsigned int sig)
 void set_sigaction(int signo, void (*sighandler)(int), struct sigaction *oldact);
 
 /* XXX Those are extern, are they really needed? */
-struct tcb *current_tcp;
-int strace_child;
-int detach_on_execve;
+extern struct tcb *current_tcp;
+extern int strace_child;
+extern int detach_on_execve;
+
 static volatile int interrupted;
 char *gdbserver = NULL;
 /* XXX Move pid/tid to gdb_conn? */
@@ -108,14 +109,17 @@ gdb_map_signal(unsigned int gdb_sig) {
 	/* real-time signals are "special", not even fully contiguous */
 	if (gdb_sig == GDB_SIGNAL_REALTIME_32)
 		return 32;
+
 	if (GDB_SIGNAL_REALTIME_33 <= gdb_sig &&
-			gdb_sig <= GDB_SIGNAL_REALTIME_63)
+	    gdb_sig <= GDB_SIGNAL_REALTIME_63)
 		return gdb_sig - GDB_SIGNAL_REALTIME_33 + 33;
+
 	if (GDB_SIGNAL_REALTIME_64 <= gdb_sig &&
-			gdb_sig <= GDB_SIGNAL_REALTIME_127)
+	    gdb_sig <= GDB_SIGNAL_REALTIME_127)
 		return gdb_sig - GDB_SIGNAL_REALTIME_64 + 64;
 
 	const char *gdb_signame = gdb_signal_names[gdb_sig];
+
 	if (!gdb_signame)
 		return -1;
 
@@ -125,9 +129,11 @@ gdb_map_signal(unsigned int gdb_sig) {
 
 	/* scan the rest for a match */
 	unsigned int sig;
+
 	for (sig = 1; sig < nsignals; ++sig) {
 		if (sig == gdb_sig)
 			continue;
+
 		if (!strcmp(gdb_signame, signame(sig)))
 			return sig;
 	}
@@ -146,6 +152,7 @@ gdb_signal_map_init(void)
 
 		unsigned int gdb_sig;
 		int *map = gdb_signal_map[pers];
+
 		for (gdb_sig = 0; gdb_sig < GDB_SIGNAL_LAST; ++gdb_sig)
 			map[gdb_sig] = gdb_map_signal(gdb_sig);
 	}
@@ -158,8 +165,10 @@ static int
 gdb_signal_to_target(struct tcb *tcp, unsigned int signal)
 {
 	unsigned int pers = tcp->currpers;
+
 	if (pers < SUPPORTED_PERSONALITIES && signal < GDB_SIGNAL_LAST)
 		return gdb_signal_map[pers][signal];
+
 	return -1;
 }
 
@@ -174,6 +183,7 @@ gdb_parse_thread(const char *id, int *pid, int *tid)
 		/* stop messages should always have the TID, */
 		/* but if not, just use the PID. */
 		char *dot = strchr(id, '.');
+
 		if (!dot) {
 			*tid = *pid;
 		} else {
@@ -199,10 +209,12 @@ gdb_recv_signal(struct gdb_stop_reply *stop)
 	/* tokenize the n:r pairs */
 	char *info = strdupa(reply + 3);
 	char *savetok = NULL, *nr;
+
 	for (nr = strtok_r(info, ";", &savetok); nr;
-			nr = strtok_r(NULL, ";", &savetok)) {
+	    nr = strtok_r(NULL, ";", &savetok)) {
 		char *n = strtok(nr, ":");
 		char *r = strtok(NULL, "");
+
 		if (!n || !r)
 			continue;
 
@@ -211,19 +223,16 @@ gdb_recv_signal(struct gdb_stop_reply *stop)
 				gdb_parse_thread(r, &stop->pid, &stop->tid);
 				general_pid = stop->pid;
 				general_tid = stop->tid;
-			}
-			else
+			} else
 				/* an optional 2nd thread component is the */
 				/* thread that gdbserver is focused on */
 				gdb_parse_thread(r, &general_pid, &general_tid);
-		}
-		else if (!strcmp(n, "syscall_entry")) {
+		} else if (!strcmp(n, "syscall_entry")) {
 			if (stop->type == GDB_STOP_TRAP) {
 				stop->type = GDB_STOP_SYSCALL_ENTRY;
 				stop->code = gdb_decode_hex_str(r);
 			}
-		}
-		else if (!strcmp(n, "syscall_return")) {
+		} else if (!strcmp(n, "syscall_return")) {
 			if (stop->type == GDB_STOP_TRAP) {
 				stop->type = GDB_STOP_SYSCALL_RETURN;
 				stop->code = gdb_decode_hex_str(r);
@@ -272,9 +281,9 @@ gdb_recv_stop(struct gdb_stop_reply *stop_reply)
 
 	if (stop_reply)
 		/* pop_notification gave us a cached notification */
-	    stop = *stop_reply;
+		stop = *stop_reply;
 	else
-	    stop.reply = gdb_recv(gdb, &stop.size, true);
+		stop.reply = gdb_recv(gdb, &stop.size, true);
 
 	if (debug_flag)
 	{
@@ -283,28 +292,29 @@ gdb_recv_stop(struct gdb_stop_reply *stop_reply)
 	}
 
 	if (gdb_has_non_stop(gdb) && !stop_reply) {
-	    /* non-stop packet order:
-	       client sends: $vCont;c
-	       server sends: OK
-	       server sends: %Stop:T05syscall_entry (possibly out of order)
-	       client sends: $vStopped
-	       server possibly sends 0 or more: T05syscall_entry
-	       client sends to each: $vStopped
-	       server sends: OK
-	    */
-	     /* Do we have an out of order notification?  (see gdb_recv) */
-	     reply = pop_notification(&stop_size);
-	     if (reply) {
-		  if (debug_flag)
-		       error_msg("popped %s\n", reply);
-		  stop.reply = reply;
-		  reply = gdb_recv(gdb, &stop_size, false); /* vContc OK */
-	     }
-	     else {
-		     while (stop.reply[0] != 'T' && stop.reply[0] != 'W')
-			     stop.reply = gdb_recv(gdb, &stop.size, true);
-	     }
+		/* non-stop packet order:
+		 * client sends: $vCont;c
+		 * server sends: OK
+		 * server sends: %Stop:T05syscall_entry (possibly out of order)
+		 * client sends: $vStopped
+		 * server possibly sends 0 or more: T05syscall_entry
+		 * client sends to each: $vStopped
+		 * server sends: OK
+		 */
+		/* Do we have an out of order notification?  (see gdb_recv) */
+		reply = pop_notification(&stop_size);
+		if (reply) {
+			if (debug_flag)
+				error_msg("popped %s\n", reply);
+
+			stop.reply = reply;
+			reply = gdb_recv(gdb, &stop_size, false); /* vContc OK */
+		} else {
+			while (stop.reply[0] != 'T' && stop.reply[0] != 'W')
+				stop.reply = gdb_recv(gdb, &stop.size, true);
+		}
 	}
+
 	if (gdb_has_non_stop(gdb) && (stop.reply[0] == 'T')) {
 		do {
 			size_t this_size;
@@ -480,11 +490,14 @@ gdb_init_syscalls(void)
 
 	for (sci = 0; want_syscall_set && sci < nsyscalls; sci++)
 		if (qual_flags(sci) & QUAL_TRACE)
-			if (asprintf ((char**)&syscall_set, "%s;%x", syscall_set, sci) < 0)
-				error_msg("couldn't enable GDB server syscall catching");
+			if (asprintf((char **) &syscall_set, "%s;%x",
+			    syscall_set, sci) < 0)
+				error_msg("couldn't enable GDB server syscall "
+					  "catching");
 
 	if (want_syscall_set)
-		asprintf ((char**)&syscall_set, "%s%s", syscall_cmd, syscall_set);
+		asprintf((char **) &syscall_set, "%s%s", syscall_cmd,
+			 syscall_set);
 	else
 		syscall_set = syscall_cmd;
 	gdb_send_str(gdb, syscall_set);
@@ -512,7 +525,8 @@ gdb_find_thread(int tid, bool current)
 			gdb_send_str(gdb, cmd);
 			current = gdb_ok();
 			if (!current)
-				error_msg("couldn't set GDB server to thread %d", tid);
+				error_msg("couldn't set GDB server to thread "
+					  "%d", tid);
 		}
 	}
 	return tcp;
@@ -533,11 +547,13 @@ gdb_enumerate_threads(void)
 	while (reply[0] == 'm') {
 		char *thread;
 		for (thread = strtok(reply + 1, ","); thread;
-				thread = strtok(NULL, "")) {
+		     thread = strtok(NULL, "")) {
 			int pid, tid;
+
 			gdb_parse_thread(thread, &pid, &tid);
 
 			struct tcb *tcp = gdb_find_thread(tid, false);
+
 			if (tcp && !current_tcp)
 				current_tcp = tcp;
 		}
@@ -584,6 +600,7 @@ gdb_cleanup(void)
 {
 	if (gdb)
 		gdb_end(gdb);
+
 	gdb = NULL;
 }
 
@@ -594,13 +611,15 @@ gdb_startup_child(char **argv)
 		error_msg_and_die("GDB server not connected!");
 
 	if (!gdb_extended)
-		error_msg_and_die("GDB server doesn't support starting processes!");
+		error_msg_and_die("GDB server doesn't support starting "
+				  "processes!");
 
 	/* Without knowing gdb's current tid, vCont of the correct thread for
 	   the multithreaded nonstop case is difficult, so default to all-stop */
 
 	size_t i;
 	size_t size = 4; /*vRun */
+
 	for (i = 0; argv[i]; ++i) {
 		size += 1 + 2 * strlen(argv[i]); /*;hexified-argument */
 	}
@@ -629,8 +648,10 @@ gdb_startup_child(char **argv)
 	}
 
 	struct gdb_stop_reply stop = gdb_recv_stop(NULL);
+
 	if (stop.size == 0)
 		error_msg_and_die("GDB server doesn't support vRun!");
+
 	switch (stop.type) {
 	case GDB_STOP_ERROR:
 		error_msg_and_die("GDB server failed vRun with %.*s",
@@ -648,6 +669,7 @@ gdb_startup_child(char **argv)
 	strace_child = tid;
 
 	struct tcb *tcp = alloctcb(tid);
+
 	tcp->flags |= TCB_ATTACHED | TCB_STARTUP;
 	newoutf(tcp);
 	gdb_init_syscalls();
@@ -656,6 +678,7 @@ gdb_startup_child(char **argv)
 		gdb_set_non_stop(gdb, true);
 	else
 		gdb_set_non_stop(gdb, false);
+
 	/* TODO normal strace attaches right before exec, so the first
 	 * syscall seen is the execve with all its arguments.  Need to
 	 * emulate that here? */
@@ -670,41 +693,45 @@ gdb_attach_tcb(struct tcb *tcp)
 
 	if (!gdb_extended)
 		error_msg_and_die("GDB server doesn't support attaching "
-				"processes");
+				  "processes");
 
 	struct gdb_stop_reply stop;
 	char vattach_cmd[] = "vAttach;XXXXXXXX";
 
 	gdb_send_cstr(gdb, "QNonStop:1");
 	if (gdb_ok())
-	       gdb_set_non_stop(gdb, true);
+		gdb_set_non_stop(gdb, true);
 
 	snprintf(vattach_cmd, sizeof(vattach_cmd), "vAttach;%x", tcp->pid);
 	gdb_send_str(gdb, vattach_cmd);
 
 	do {
 		/*
-		  non-stop packet order:
-		  client sends: vCont;t
-		  server sends: OK
-		  server sends: Stop:T05swbreak:;
-		  client sends: vStopped
-		  [ server sends: T05swbreak:;
-		    client sends: vStopped ]
-		  server sends: OK
-		*/
+		 * non-stop packet order:
+		 * client sends: vCont;t
+		 * server sends: OK
+		 * server sends: Stop:T05swbreak:;
+		 * client sends: vStopped
+		 * [ server sends: T05swbreak:;
+		 *   client sends: vStopped ]
+		 * server sends: OK
+		 */
 		char h_cmd[] = "Hgxxxxxxxx";
 		char vcont_cmd[] = "vCont;t:pXXXXXXXX";
+
 		if (!gdb_ok()) {
-		     stop.type = GDB_STOP_UNKNOWN;
-		     break;
+			stop.type = GDB_STOP_UNKNOWN;
+			break;
 		}
+
 		snprintf(h_cmd, sizeof(h_cmd), "Hg%x.-1", tcp->pid);
 		gdb_send_str(gdb, h_cmd);
+
 		if (!gdb_ok()) {
-		     stop.type = GDB_STOP_UNKNOWN;
-		     break;
+			stop.type = GDB_STOP_UNKNOWN;
+			break;
 		}
+
 		snprintf(vcont_cmd, sizeof(vcont_cmd),
 			 "vCont;t:p%x.-1", tcp->pid);
 		gdb_send_str(gdb, vcont_cmd);
@@ -713,23 +740,28 @@ gdb_attach_tcb(struct tcb *tcp)
 
 	if (stop.type == GDB_STOP_UNKNOWN) {
 		gdb_send_cstr(gdb, "QNonStop:0");
+
 		if (gdb_ok())
 			gdb_set_non_stop(gdb, false);
 		else
 			error_msg_and_die("Cannot connect to process %d: "
-					"GDB server doesn't support vAttach!",
-					tcp->pid);
+					  "GDB server doesn't support vAttach!",
+					  tcp->pid);
+
 		gdb_send_str(gdb, vattach_cmd);
 		stop = gdb_recv_stop(NULL);
+
 		if (stop.size == 0)
 			error_msg_and_die("Cannot connect to process %d: "
-					"GDB server doesn't support vAttach!",
-					tcp->pid);
+					  "GDB server doesn't support vAttach!",
+					  tcp->pid);
+
 		switch (stop.type) {
 		case GDB_STOP_ERROR:
 			error_msg_and_die("Cannot connect to process %d: "
-					"GDB server failed vAttach with %.*s",
-					tcp->pid, (int)stop.size, stop.reply);
+					  "GDB server failed vAttach with %.*s",
+					  tcp->pid, (int) stop.size,
+					  stop.reply);
 			/* XXX fall through? */
 		case GDB_STOP_TRAP:
 			break;
@@ -739,10 +771,12 @@ gdb_attach_tcb(struct tcb *tcp)
 			/* fallthrough */
 		default:
 			error_msg_and_die("Cannot connect to process %d: "
-					"GDB server expected vAttach trap, got: %.*s",
-					  tcp->pid, (int)stop.size, stop.reply);
-	    }
-	  }
+					  "GDB server expected vAttach trap, "
+					  "got: %.*s",
+					  tcp->pid, (int) stop.size,
+					  stop.reply);
+		}
+	}
 
 	pid_t tid = stop.tid;
 	free(stop.reply);
@@ -922,17 +956,19 @@ gdb_dispatch_event(enum trace_event ret, int *pstatus, void *si_p)
 	pid_t tid;
 	unsigned int sig = 0;
 
-
 	/* Exit if the process has gone away */
 	if (tcp == 0)
 		return false;
+
 	tid = tcp->pid;
 	if (! (tcp->flags & TCB_GDB_CONT_PID_TID)) {
 		char cmd[] = "Hgxxxxxxxx";
+
 		snprintf(cmd, sizeof(cmd), "Hg%x.%x", general_pid, general_tid);
 		if (debug_flag)
 			error_msg("%s %s\n", __FUNCTION__, cmd);
 	}
+
 	/* TODO need code equivalent to PTRACE_EVENT_EXEC? */
 
 	/* Is this the very first time we see this tracee stopped? */
@@ -1003,12 +1039,14 @@ gdb_dispatch_event(enum trace_event ret, int *pstatus, void *si_p)
 		if (gdb_vcont) {
 			/* send the signal to this target and continue everyone else */
 			char cmd[] = "vCont;Cxx:xxxxxxxx;c";
+
 			snprintf(cmd, sizeof(cmd),
 				 "vCont;C%02x:%x;c", gdb_sig, tid);
 			gdb_send_str(gdb, cmd);
 		} else {
 			/* just send the signal */
 			char cmd[] = "Cxx";
+
 			snprintf(cmd, sizeof(cmd), "C%02x", gdb_sig);
 			gdb_send_str(gdb, cmd);
 		}
@@ -1018,14 +1056,17 @@ gdb_dispatch_event(enum trace_event ret, int *pstatus, void *si_p)
 			 * pid.tid is the thread gdbserver is focused
 			 * on */
 			char cmd[] = "vCont;c:xxxxxxxx.xxxxxxxx";
+			struct tcb *general_tcp =
+				gdb_find_thread(general_tid, true);
 
-			struct tcb *general_tcp = gdb_find_thread(general_tid, true);
-			if (gdb_has_non_stop(gdb) && general_pid != general_tid
-					&& general_tcp->flags & TCB_GDB_CONT_PID_TID)
+			if (gdb_has_non_stop(gdb) &&
+			    general_pid != general_tid &&
+			    general_tcp->flags & TCB_GDB_CONT_PID_TID)
 				snprintf(cmd, sizeof(cmd), "vCont;c:p%x.%x",
 					 general_pid, general_tid);
 			else
 				snprintf(cmd, sizeof(cmd), "vCont;c");
+
 			gdb_send_str(gdb, cmd);
 		} else {
 			gdb_send_cstr(gdb, "c");
@@ -1045,6 +1086,7 @@ gdb_get_all_regs(pid_t tid, size_t *size)
 	/* NB: this assumes gdbserver's current thread is also tid.  If that
 	 * may not be the case, we should send "HgTID" first, and restore.  */
 	gdb_send_cstr(gdb, "g");
+
 	return gdb_recv(gdb, size, false);
 }
 
@@ -1077,26 +1119,30 @@ gdb_read_mem(pid_t tid, long addr, unsigned int len, bool check_nil, char *out)
 		return -1;
 	}
 
-	/* NB: this assumes gdbserver's current thread is also tid.  If that
-	 * may not be the case, we should send "HgTID" first, and restore.  */
+	/*
+	 * NB: this assumes gdbserver's current thread is also tid.  If that
+	 * may not be the case, we should send "HgTID" first, and restore.
+	 */
 	while (len) {
 		char cmd[] = "mxxxxxxxxxxxxxxxx,xxxx";
 		unsigned int chunk_len = len < 0x1000 ? len : 0x1000;
+
 		snprintf(cmd, sizeof(cmd), "m%lx,%x", addr, chunk_len);
 		gdb_send_str(gdb, cmd);
 
 		size_t size;
 		char *reply = gdb_recv(gdb, &size, false);
-		if (size < 2 || reply[0] == 'E' || size > len * 2
-		    || gdb_decode_hex_buf(reply, size, out) < 0) {
+
+		if (size < 2 || reply[0] == 'E' || size > len * 2 ||
+		    gdb_decode_hex_buf(reply, size, out) < 0) {
 			free(reply);
 			errno = EINVAL;
 			return -1;
 		}
 
 		chunk_len = size / 2;
-		if (check_nil && strnlen(out, chunk_len) < chunk_len)
-		{
+
+		if (check_nil && strnlen(out, chunk_len) < chunk_len) {
 			free(reply);
 			return 1;
 		}
@@ -1127,10 +1173,13 @@ gdb_write_mem(pid_t tid, long addr, unsigned int len, char *buffer)
 	 * may not be the case, we should send "HgTID" first, and restore.  */
 	snprintf(cmd, sizeof(cmd), "X%lx,%x:", addr, len);
 	j = strlen(cmd);
+
 	for (i = 0; i < len; i++)
 		cmd[j++] = buffer[i];
+
 	cmd[j] = '\0';
 	gdb_send_str(gdb, cmd);
+
 	if (!gdb_ok())
 		error_msg("Failed to poke data to GDB server");
 
@@ -1206,8 +1255,9 @@ gdb_verify_args(const char *username, bool daemon, unsigned int *follow_fork)
 
 #ifdef USE_LIBUNWIND
 	if (stack_trace_enabled)
-		error_msg_and_die("Simultaneous usage of gdbserver backend (-G) and "
-				"stack tracing (-k) is not supported");
+		error_msg_and_die("Simultaneous usage of "
+				  "gdbserver backend (-G) and "
+				  "stack tracing (-k) is not supported");
 #endif
 
 	return true;
