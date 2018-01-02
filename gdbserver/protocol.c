@@ -456,8 +456,8 @@ static char *
 recv_packet(FILE *in, size_t *ret_size, bool* ret_sum_ok)
 {
 	size_t i = 0;
-	size_t size = 4096;
-	char *reply = xmalloc(size);
+	size_t size = 0;
+	char *reply = NULL;
 
 	int c;
 	uint8_t sum = 0;
@@ -506,11 +506,8 @@ recv_packet(FILE *in, size_t *ret_size, bool* ret_sum_ok)
 			*ret_size = i;
 
 			/* terminate it for good measure */
-			if (i == size) {
-				reply = realloc(reply, size + 1);
-				if (reply == NULL)
-					perror_msg_and_die("realloc");
-			}
+			if (i == size)
+				reply = xgrowarray(reply, &size, 1);
 
 			reply[i] = '\0';
 
@@ -539,12 +536,9 @@ recv_packet(FILE *in, size_t *ret_size, bool* ret_sum_ok)
 					int count = c2 - 29;
 
 					/* get a bigger buffer if needed */
-					if (i + count > size) {
-						size *= 2;
-						reply = realloc(reply, size);
-						if (reply == NULL)
-							perror_msg_and_die("realloc");
-					}
+					while (i + count > size)
+						reply = xgrowarray(reply, &size,
+								   1);
 
 					/* fill the repeated character */
 					memset(&reply[i], reply[i - 1], count);
@@ -562,12 +556,8 @@ recv_packet(FILE *in, size_t *ret_size, bool* ret_sum_ok)
 		}
 
 		/* get a bigger buffer if needed */
-		if (i == size) {
-			size *= 2;
-			reply = realloc(reply, size);
-			if (reply == NULL)
-				perror_msg_and_die("realloc");
-		}
+		if (i == size)
+			reply = xgrowarray(reply, &size, 1);
 
 		/* add one character */
 		reply[i++] = c;
