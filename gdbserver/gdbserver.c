@@ -247,15 +247,18 @@ gdb_recv_signal(struct gdb_stop_reply *stop)
 static void
 gdb_recv_exit(struct gdb_stop_reply *stop)
 {
+	static const char process_needle[] = ";process:";
 	char *reply = stop->reply;
 
 	stop->type = reply[0] == 'W' ?
 		GDB_STOP_EXITED : GDB_STOP_TERMINATED;
 	stop->code = gdb_decode_hex_str(&reply[1]);
 
-	const char *process = strstr(reply, ";process:");
+	const char *process = strstr(reply, process_needle);
+
 	if (process) {
-		stop->pid = gdb_decode_hex_str(process + 9);
+		stop->pid = gdb_decode_hex_str(process +
+					       sizeof(process_needle) - 1);
 
 		/* we don't really know the tid, so just use PID for now */
 		/* XXX should exits enumerate all threads we know of a process? */
