@@ -372,11 +372,6 @@ gdb_prog_pid_check (char *exec_name, int nprocs)
 bool
 gdb_start_init(void)
 {
-# if ! defined X86_64
-	error_msg("-G is not supported on this target.");
-	return false;		/* Only supported on x86_64 */
-# endif
-
 	gdb_signal_map_init();
 
 	if (gdbserver[0] == '|')
