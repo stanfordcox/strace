@@ -406,7 +406,7 @@ gdb_start_init(void)
 		";fork-events+;vfork-events+;exec-events+";
 
 	snprintf(multi_cmd, sizeof(multicmd), "qSupported:multiprocess+;"
-		 "QThreadEvents+;%s%s",
+		 "QThreadEvents+%s%s",
 		 followfork ? ";fork-events+;vfork-events+" : "",
 		 detach_on_execve ? ";exec-events" : "");
 
