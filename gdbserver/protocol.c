@@ -464,7 +464,7 @@ recv_packet(FILE *in, size_t *ret_size, bool* ret_sum_ok)
 	bool escape = false;
 
 	/* fast-forward to the first start of packet */
-	while ((c = fgetc_unlocked(in)) != EOF && (c != '$' && c != '%'))
+	while ((c = fgetc_unlocked(in)) != EOF && c != '$' && c != '%')
 		;
 	if (c == '%')
 		ungetc(c, in);
