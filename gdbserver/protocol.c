@@ -94,18 +94,17 @@ gdb_encode_hex_string(const char *str)
 	return out;
 }
 
-
 static inline uint8_t
 hex_nibble(uint8_t hex)
 {
 	static const uint8_t hex_value[256] = {
-		[0 ... '0'-1] = UINT8_MAX,
+		[0 ... '0' - 1] = UINT8_MAX,
 		0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
-		['9'+1 ... 'A'-1] = UINT8_MAX,
+		['9' + 1 ... 'A' - 1] = UINT8_MAX,
 		10, 11, 12, 13, 14, 15,
-		['F'+1 ... 'a'-1] = UINT8_MAX,
+		['F' + 1 ... 'a' - 1] = UINT8_MAX,
 		10, 11, 12, 13, 14, 15,
-		['f'+1 ... 255] = UINT8_MAX,
+		['f' + 1 ... 255] = UINT8_MAX,
 	};
 	return hex_value[hex];
 }
@@ -134,10 +133,13 @@ uint64_t gdb_decode_hex_n(const char *bytes, size_t n)
 uint64_t gdb_decode_hex_str(const char *bytes)
 {
 	uint64_t value = 0;
+
 	while (*bytes) {
 		uint8_t nibble = hex_nibble(*bytes++);
+
 		if (nibble >= 16)
 			break;
+
 		value = 16 * value + nibble;
 	}
 	return value;
@@ -166,7 +168,6 @@ int gdb_decode_hex_buf(const char *bytes, size_t n, char *out)
 	}
 	return 0;
 }
-
 
 static struct gdb_conn *
 gdb_begin(int fd)
@@ -296,7 +297,6 @@ gdb_begin_path(const char *path)
 	return gdb_begin(fd);
 }
 
-
 void
 gdb_end(struct gdb_conn *conn)
 {
@@ -304,7 +304,6 @@ gdb_end(struct gdb_conn *conn)
 	fclose(conn->out);
 	free(conn);
 }
-
 
 static void
 send_packet(FILE *out, const char *command, size_t size)
@@ -415,11 +414,11 @@ push_notification(char *packet, size_t packet_size)
 		printf /*error_msg*/("Pushed %s (%d items in queue)\n", packet, notifications.count);
 }
 
-
 char*
 pop_notification(size_t *size)
 {
 	char *packet;
+
 	if (notifications.count == 0) {
 		return (char*)NULL;
 	} else {
@@ -437,13 +436,11 @@ pop_notification(size_t *size)
 	return packet;
 }
 
-
 bool
 have_notification(void)
 {
 	return (notifications.count == 0 ? false : true);
 }
-
 
 /* XXX This one is not used currently */
 void
@@ -457,7 +454,6 @@ dump_notifications(char *packet, int pid, int tid)
 	}
 }
 
-
 static char *
 recv_packet(FILE *in, size_t *ret_size, bool* ret_sum_ok)
 {
@@ -470,12 +466,13 @@ recv_packet(FILE *in, size_t *ret_size, bool* ret_sum_ok)
 	bool escape = false;
 
 	/* fast-forward to the first start of packet */
-	while ((c = fgetc_unlocked(in)) != EOF && (c != '$' && c != '%'));
+	while ((c = fgetc_unlocked(in)) != EOF && (c != '$' && c != '%'))
+		;
 	if (c == '%')
-		ungetc (c, in);
+		ungetc(c, in);
 
 	while ((c = fgetc_unlocked(in)) != EOF) {
-		sum += (uint8_t)c;
+		sum += (uint8_t) c;
 		/* XXX Rewrite to FSM */
 		switch (c) {
 		case '$': /* new packet?  start over... */
@@ -483,28 +480,30 @@ recv_packet(FILE *in, size_t *ret_size, bool* ret_sum_ok)
 			sum = 0;
 			escape = false;
 			continue;
-		case '%':
-		{
+		case '%': {
 			char pcr[6];
-
 			int idx = 0;
 
 			i = 0;
 			sum = 0;
 			escape = false;
-			for (idx = 0; idx < 5; idx++)
-			{
+
+			for (idx = 0; idx < 5; idx++) {
 				pcr[idx] = fgetc_unlocked(in);
-				sum += (uint8_t)pcr[idx];
+				sum += (uint8_t) pcr[idx];
 			}
+
 			if (strncmp(pcr, "Stop:", 5) == 0)
 				continue;
+
 			continue;
 		}
 		case '#': /* end of packet */
 			sum -= c; /* not part of the checksum */
+
 			uint8_t msb = fgetc_unlocked(in);
 			uint8_t lsb = fgetc_unlocked(in);
+
 			*ret_sum_ok = sum == gdb_decode_hex(msb, lsb);
 			*ret_size = i;
 
@@ -514,6 +513,7 @@ recv_packet(FILE *in, size_t *ret_size, bool* ret_sum_ok)
 				if (reply == NULL)
 					perror_msg_and_die("realloc");
 			}
+
 			reply[i] = '\0';
 
 			if (debug_flag) {
@@ -578,11 +578,11 @@ recv_packet(FILE *in, size_t *ret_size, bool* ret_sum_ok)
 	}
 
 	if (ferror(in)) {
-		error_msg_and_die("got stream error while receiving GDB server"
-				   " packet");
+		error_msg_and_die("got stream error while receiving GDB server "
+				  "packet");
 	} else if (feof(in)) {
 		error_msg_and_die("connection closed unexpectedly while "
-				"receiving GDB server packet");
+				  "receiving GDB server packet");
 	}
 
 	error_msg_and_die("unknown GDB server connection error");
@@ -602,7 +602,7 @@ gdb_recv(struct gdb_conn *conn, size_t *size, bool want_stop)
 		   type, then cache the notification. */
 		/* XXX it's better to preserve (some of) %Stop: header */
 		/* XXX What if checksum is wrong? */
-		if (! want_stop && strncmp(reply, "T05syscall", 10) == 0) {
+		if (!want_stop && strncmp(reply, "T05syscall", 10) == 0) {
 			push_notification(reply, *size);
 			reply = recv_packet(conn->in, size, &acked);
 		}
@@ -650,17 +650,18 @@ gdb_has_non_stop(struct gdb_conn *conn)
 /* Read complete qXfer data, returned as binary with the size.
  * On error, returns NULL with size set to the error code.  */
 char *
-gdb_xfer_read(struct gdb_conn *conn,
-	const char *object, const char *annex,
-	/* out */ size_t *ret_size)
+gdb_xfer_read(struct gdb_conn *conn, const char *object, const char *annex,
+	      /* out */ size_t *ret_size)
 {
 	size_t error = 0;
 	size_t offset = 0;
 	char *data = NULL;
+
 	do {
 		char *cmd;
 		int cmd_size = asprintf(&cmd, "qXfer:%s:read:%s:%zx,%x",
-					object ?: "", annex ?: "", offset, 0xfff /* XXX PacketSize */);
+					object ?: "", annex ?: "", offset,
+					0xfff /* XXX PacketSize */);
 		if (cmd_size < 0)
 			break;
 
@@ -677,26 +678,30 @@ gdb_xfer_read(struct gdb_conn *conn,
 			memcpy(data + offset, reply + 1, size - 1);
 			free(reply);
 			offset += size - 1;
+
 			if (c == 'l') {
 				*ret_size = offset;
 				return data;
 			}
+
 			continue;
+
 		case 'E':
 			error = gdb_decode_hex_str(reply + 1);
 			break;
 
 		/* XXX handle other cases? */
 		}
+
 		free(reply);
 		break;
 	} while (0); /* XXX handle greater size */
 
 	free(data);
 	*ret_size = error;
+
 	return NULL;
 }
-
 
 struct vfile_response {
 	char *reply;
@@ -752,15 +757,20 @@ gdb_readlink(struct gdb_conn *conn, const char *linkpath,
 	free(parameters);
 
 	int ret = -1;
-	if (res.result >= 0 && res.attachment != NULL
-		&& res.result == (int64_t)res.attachment_size) {
+
+	if (res.result >= 0 && res.attachment != NULL &&
+	    res.result == (int64_t) res.attachment_size) {
 		size_t data_len = res.attachment_size;
+
 		if (data_len >= bufsize)
 			data_len = bufsize - 1; /* XXX truncate -- ok? */
+
 		memcpy(buf, res.attachment, data_len);
 		buf[data_len] = 0;
 		ret = data_len;
 	}
+
 	free(res.reply);
+
 	return ret;
 }
