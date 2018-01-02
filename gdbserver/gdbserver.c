@@ -76,16 +76,16 @@ static const char * const gdb_signal_names[] = {
 static int gdb_signal_map[SUPPORTED_PERSONALITIES][GDB_SIGNAL_LAST];
 
 enum gdb_stop {
-	gdb_stop_unknown, /* O or F or anything else */
-	gdb_stop_error, /* E */
-	gdb_stop_signal, /* S or T */
-	gdb_stop_exited, /* W */
-	gdb_stop_terminated, /* X */
+	GDB_STOP_UNKNOWN, /* O or F or anything else */
+	GDB_STOP_ERROR, /* E */
+	GDB_STOP_SIGNAL, /* S or T */
+	GDB_STOP_EXITED, /* W */
+	GDB_STOP_TERMINATED, /* X */
 
-	/* specific variants of gdb_stop_signal 05 */
-	gdb_stop_trap, /* missing or unrecognized stop reason */
-	gdb_stop_syscall_entry,
-	gdb_stop_syscall_return,
+	/* specific variants of GDB_STOP_SIGNAL 05 */
+	GDB_STOP_TRAP, /* missing or unrecognized stop reason */
+	GDB_STOP_SYSCALL_ENTRY,
+	GDB_STOP_SYSCALL_RETURN,
 };
 
 
@@ -194,7 +194,7 @@ gdb_recv_signal(struct gdb_stop_reply *stop)
 	stop->code = gdb_decode_hex_n(&reply[1], 2);
 	stop->type = (stop->code == GDB_SIGNAL_TRAP ||
 			stop->code == GDB_SIGNAL_0)
-		? gdb_stop_trap : gdb_stop_signal;
+		? GDB_STOP_TRAP : GDB_STOP_SIGNAL;
 
 	/* tokenize the n:r pairs */
 	char *info = strdupa(reply + 3);
@@ -218,14 +218,14 @@ gdb_recv_signal(struct gdb_stop_reply *stop)
 				gdb_parse_thread(r, &general_pid, &general_tid);
 		}
 		else if (!strcmp(n, "syscall_entry")) {
-			if (stop->type == gdb_stop_trap) {
-				stop->type = gdb_stop_syscall_entry;
+			if (stop->type == GDB_STOP_TRAP) {
+				stop->type = GDB_STOP_SYSCALL_ENTRY;
 				stop->code = gdb_decode_hex_str(r);
 			}
 		}
 		else if (!strcmp(n, "syscall_return")) {
-			if (stop->type == gdb_stop_trap) {
-				stop->type = gdb_stop_syscall_return;
+			if (stop->type == GDB_STOP_TRAP) {
+				stop->type = GDB_STOP_SYSCALL_RETURN;
 				stop->code = gdb_decode_hex_str(r);
 			}
 		}
@@ -241,7 +241,7 @@ gdb_recv_exit(struct gdb_stop_reply *stop)
 	char *reply = stop->reply;
 
 	stop->type = reply[0] == 'W' ?
-		gdb_stop_exited : gdb_stop_terminated;
+		GDB_STOP_EXITED : GDB_STOP_TERMINATED;
 	stop->code = gdb_decode_hex_str(&reply[1]);
 
 	const char *process = strstr(reply, ";process:");
@@ -261,7 +261,7 @@ gdb_recv_stop(struct gdb_stop_reply *stop_reply)
 		.reply = NULL,
 		.size = 0,
 
-		.type = gdb_stop_unknown,
+		.type = GDB_STOP_UNKNOWN,
 		.code = -1,
 		.pid = -1,
 		.tid = -1,
@@ -319,7 +319,7 @@ gdb_recv_stop(struct gdb_stop_reply *stop_reply)
 	/* all good packets are at least 3 bytes */
 	switch (stop.size >= 3 ? stop.reply[0] : 0) {
 	case 'E':
-		stop.type = gdb_stop_error;
+		stop.type = GDB_STOP_ERROR;
 		stop.code = gdb_decode_hex_n(stop.reply + 1, 2);
 		break;
 	case 'S':
@@ -331,7 +331,7 @@ gdb_recv_stop(struct gdb_stop_reply *stop_reply)
 		gdb_recv_exit(&stop);
 		break;
 	default:
-		stop.type = gdb_stop_unknown;
+		stop.type = GDB_STOP_UNKNOWN;
 		break;
 	}
 
@@ -632,10 +632,10 @@ gdb_startup_child(char **argv)
 	if (stop.size == 0)
 		error_msg_and_die("GDB server doesn't support vRun!");
 	switch (stop.type) {
-	case gdb_stop_error:
+	case GDB_STOP_ERROR:
 		error_msg_and_die("GDB server failed vRun with %.*s",
 				(int)stop.size, stop.reply);
-	case gdb_stop_trap:
+	case GDB_STOP_TRAP:
 		break;
 	default:
 		error_msg_and_die("GDB server expected vRun trap, got: %.*s",
@@ -696,13 +696,13 @@ gdb_attach_tcb(struct tcb *tcp)
 		char h_cmd[] = "Hgxxxxxxxx";
 		char vcont_cmd[] = "vCont;t:pXXXXXXXX";
 		if (!gdb_ok()) {
-		     stop.type = gdb_stop_unknown;
+		     stop.type = GDB_STOP_UNKNOWN;
 		     break;
 		}
 		snprintf(h_cmd, sizeof(h_cmd), "Hg%x.-1", tcp->pid);
 		gdb_send_str(gdb, h_cmd);
 		if (!gdb_ok()) {
-		     stop.type = gdb_stop_unknown;
+		     stop.type = GDB_STOP_UNKNOWN;
 		     break;
 		}
 		snprintf(vcont_cmd, sizeof(vcont_cmd),
@@ -711,7 +711,7 @@ gdb_attach_tcb(struct tcb *tcp)
 		stop = gdb_recv_stop(NULL);
 	} while (0);
 
-	if (stop.type == gdb_stop_unknown) {
+	if (stop.type == GDB_STOP_UNKNOWN) {
 		gdb_send_cstr(gdb, "QNonStop:0");
 		if (gdb_ok())
 			gdb_set_non_stop(gdb, false);
@@ -726,14 +726,14 @@ gdb_attach_tcb(struct tcb *tcp)
 					"GDB server doesn't support vAttach!",
 					tcp->pid);
 		switch (stop.type) {
-		case gdb_stop_error:
+		case GDB_STOP_ERROR:
 			error_msg_and_die("Cannot connect to process %d: "
 					"GDB server failed vAttach with %.*s",
 					tcp->pid, (int)stop.size, stop.reply);
 			/* XXX fall through? */
-		case gdb_stop_trap:
+		case GDB_STOP_TRAP:
 			break;
-		case gdb_stop_signal:
+		case GDB_STOP_SIGNAL:
 			if (stop.code == 0)
 				break;
 			/* fallthrough */
@@ -813,11 +813,11 @@ gdb_next_event(int *pstatus, siginfo_t *si)
 		error_msg_and_die("GDB server gave an empty stop reply!?");
 
 	switch (stop.type) {
-	case gdb_stop_unknown:
+	case GDB_STOP_UNKNOWN:
 		error_msg_and_die("GDB server stop reply unknown: %.*s",
 				(int)stop.size, stop.reply);
 		break;
-	case gdb_stop_error:
+	case GDB_STOP_ERROR:
 		/* vCont error -> no more processes */
 		free(stop.reply);
 		return TE_BREAK;
@@ -843,19 +843,19 @@ gdb_next_event(int *pstatus, siginfo_t *si)
 				(int)stop.size, stop.reply);
 
 	switch (stop.type) {
-	case gdb_stop_exited:
+	case GDB_STOP_EXITED:
 		*pstatus = W_EXITCODE(stop.code, 0);
 		return TE_EXITED;
 
-	case gdb_stop_terminated:
+	case GDB_STOP_TERMINATED:
 		*pstatus = W_EXITCODE(0, gdb_signal_to_target(tcp, stop.code));
 		return TE_SIGNALLED;
 
-	case gdb_stop_unknown:	/* already handled above */
-	case gdb_stop_error:	/* already handled above */
-	case gdb_stop_trap:	/* misc trap */
+	case GDB_STOP_UNKNOWN:	/* already handled above */
+	case GDB_STOP_ERROR:	/* already handled above */
+	case GDB_STOP_TRAP:	/* misc trap */
 		break;
-	case gdb_stop_syscall_entry:
+	case GDB_STOP_SYSCALL_ENTRY:
 		/* If we thought we were already in a syscall --
 		 * missed a return? -- skipping this report doesn't do
 		 * much good.  Might as well force it to be a new
@@ -869,7 +869,7 @@ gdb_next_event(int *pstatus, siginfo_t *si)
 		else
 			return TE_SYSCALL_STOP;
 
-	case gdb_stop_syscall_return:
+	case GDB_STOP_SYSCALL_RETURN:
 		/* If we missed the entry, recording a return will
 		 * only confuse things, so let's just report the good
 		 * ones. */
@@ -881,7 +881,7 @@ gdb_next_event(int *pstatus, siginfo_t *si)
 		}
 		break;
 
-	case gdb_stop_signal:
+	case GDB_STOP_SIGNAL:
 	{
 		size_t siginfo_size;
 		char *siginfo_reply =
