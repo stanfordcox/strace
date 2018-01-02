@@ -633,11 +633,15 @@ gdb_has_non_stop(struct gdb_conn *conn)
 	return conn->non_stop;
 }
 
-/* Read complete qXfer data, returned as binary with the size.
- * On error, returns NULL with size set to the error code.  */
+/**
+ * Read complete qXfer data, returned as binary with the size.
+ * On error, returns NULL with size set to the error code.
+ *
+ * @param[out] ret_size
+ */
 char *
 gdb_xfer_read(struct gdb_conn *conn, const char *object, const char *annex,
-	      /* out */ size_t *ret_size)
+	      size_t *ret_size)
 {
 	size_t error = 0;
 	size_t offset = 0;
