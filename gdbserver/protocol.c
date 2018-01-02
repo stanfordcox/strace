@@ -331,11 +331,12 @@ send_packet(FILE *out, const char *command, size_t size)
 	fprintf(out, "#%02x", sum); /* packet end, checksum */
 	fflush(out);
 
-	if (ferror(out))
+	if (ferror(out)) {
 		error_msg("Error sending message \"$%s\" to GDB server",
 			  command);
-	else if (feof(out))
+	} else if (feof(out)) {
 		error_msg_and_die("Connection to GDB server has been closed");
+	}
 }
 
 void
@@ -404,9 +405,9 @@ push_notification(char *packet, size_t packet_size)
 		error_msg("Buffer overflow");
 	} else {
 		idx = notifications.start + notifications.count++;
-		if (idx >= notifications.size) {
+		if (idx >= notifications.size)
 			idx = 0;
-		}
+
 		notifications.packet[idx] = packet;
 	}
 
@@ -502,11 +503,9 @@ recv_packet(FILE *in, size_t *ret_size, bool* ret_sum_ok)
 		}
 		case '#': /* end of packet */
 			sum -= c; /* not part of the checksum */
-			{
-				uint8_t msb = fgetc_unlocked(in);
-				uint8_t lsb = fgetc_unlocked(in);
-				*ret_sum_ok = sum == gdb_decode_hex(msb, lsb);
-			}
+			uint8_t msb = fgetc_unlocked(in);
+			uint8_t lsb = fgetc_unlocked(in);
+			*ret_sum_ok = sum == gdb_decode_hex(msb, lsb);
 			*ret_size = i;
 
 			/* terminate it for good measure */
@@ -578,10 +577,10 @@ recv_packet(FILE *in, size_t *ret_size, bool* ret_sum_ok)
 		reply[i++] = c;
 	}
 
-	if (ferror(in))
+	if (ferror(in)) {
 		error_msg_and_die("got stream error while receiving GDB server"
 				   " packet");
-	else if (feof(in)) {
+	} else if (feof(in)) {
 		error_msg_and_die("connection closed unexpectedly while "
 				"receiving GDB server packet");
 	}
@@ -662,9 +661,8 @@ gdb_xfer_read(struct gdb_conn *conn,
 		char *cmd;
 		int cmd_size = asprintf(&cmd, "qXfer:%s:read:%s:%zx,%x",
 					object ?: "", annex ?: "", offset, 0xfff /* XXX PacketSize */);
-		if (cmd_size < 0) {
+		if (cmd_size < 0)
 			break;
-		}
 
 		gdb_send(conn, cmd, strlen(cmd));
 		free(cmd);
@@ -715,10 +713,9 @@ gdb_vfile(struct gdb_conn *conn, const char *operation, const char *parameters)
 
 	char *cmd;
 	int cmd_size = asprintf(&cmd, "vFile:%s:%s", operation, parameters);
-	if (cmd_size < 0) {
+	if (cmd_size < 0)
 		/* XXX Returns automatic variable! */
 		return res;
-	}
 
 	gdb_send(conn, cmd, strlen(cmd));
 	free(cmd);
