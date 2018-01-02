@@ -395,7 +395,8 @@ push_notification(char *packet, size_t packet_size)
 		notifications.size = 32;
 		notifications.start = 0;
 		notifications.count = 0;
-		notifications.packet = xmalloc(sizeof(notifications.packet) * notifications.size);
+		notifications.packet = xcalloc(notifications.size,
+					       sizeof(notifications.packet));
 	}
 
 	if (notifications.count == notifications.size) {
