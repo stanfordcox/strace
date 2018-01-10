@@ -78,6 +78,8 @@ st_MPERS_SAVE_AC_CV([member_struct_stat$1_st_mtime_nsec])
 
 AC_DEFUN([st_MPERS],[
 
+pushdef([error_on_fail], [st_cv_$1_error_on_fail])
+pushdef([perform_check], [st_cv_$1_perform_check])
 pushdef([mpers_name], [$1])
 pushdef([MPERS_NAME], translit([$1], [a-z], [A-Z]))
 pushdef([HAVE_MPERS], [HAVE_]MPERS_NAME[_MPERS])
@@ -87,8 +89,28 @@ pushdef([st_cv_cc], [st_cv_$1_cc])
 pushdef([st_cv_runtime], [st_cv_$1_runtime])
 pushdef([st_cv_mpers], [st_cv_$1_mpers])
 
+case ",${enable_mpers}," in
+*,$1,*|,yes,)
+	perform_check=yes
+	error_on_fail=yes
+	;;
+,check,)
+	perform_check=yes
+	error_on_fail=no
+	;;
+*)
+	perform_check=no
+	error_on_fail=no
+	;;
+esac
+
 case "$arch" in
 	[$2])
+	if test "x$perform_check" = "xno"; then
+		st_cv_runtime=no
+		st_cv_mpers=no
+	else
+
 	AH_TEMPLATE([HAVE_GNU_STUBS_32_H],
 		    [Define to 1 if you have the <gnu/stubs-32.h> header file.])
 	AH_TEMPLATE([HAVE_GNU_STUBS_X32_H],
@@ -147,6 +169,12 @@ case "$arch" in
 		fi
 	fi
 	CFLAGS="$saved_CFLAGS"
+
+	if test "x$error_on_fail" = xyes && test "x$st_cv_mpers" != xyes; then
+		AC_MSG_FAILURE([$1 personality decoding requested
+				but not available, aborting])
+	fi
+	fi
 	;;
 
 	*)
@@ -166,5 +194,7 @@ popdef([HAVE_RUNTIME])
 popdef([HAVE_MPERS])
 popdef([MPERS_NAME])
 popdef([mpers_name])
+popdef([perform_check])
+popdef([error_on_fail])
 
 ])

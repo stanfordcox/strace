@@ -962,6 +962,21 @@ if test "$arch" = mips && test "$no_create" != yes; then
 	fi
 fi
 
+AC_ARG_ENABLE([mpers],
+	AC_HELP_STRING([--disable-mpers],
+		       [Disable multiple personalities support. Without it,
+		        strace can't decode structures used in tracees with ABIs
+			that differ from the one strace has. One can also
+			provide a list of non-native ABIs (from the possible
+			options of m32 and mx32) that should be supported (for
+			example, it might be useful to provide
+			--enable-mpers=m32 on x86_64 if the build nevironment
+			doesn't have support for building x32 binaries) or just
+			--enable-mpers=check in order to automatically detect
+			mpers support.]),
+	[enable_mpers="${enableval}"],
+	[enable_mpers=yes])
+
 st_MPERS([m32], [aarch64|powerpc64|riscv|sparc64|tile|x32|x86_64])
 st_MPERS([mx32], [x86_64])
 
