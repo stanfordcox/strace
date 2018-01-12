@@ -392,6 +392,7 @@ AC_CHECK_MEMBERS(m4_normalize([
 
 AC_CHECK_HEADERS(m4_normalize([
 	asm/cachectl.h
+	asm/guarded_storage.h
 	asm/sysmips.h
 	bluetooth/bluetooth.h
 	elf.h
