@@ -45,6 +45,16 @@
 #include <linux/types.h>
 #include <linux/videodev2.h>
 
+#ifndef HAVE_STRUCT_V4L2_CREATE_BUFFERS
+struct v4l2_create_buffers {
+	__u32			index;
+	__u32			count;
+	__u32			memory;
+	struct v4l2_format	format;
+	__u32			reserved[8];
+};
+#endif
+
 typedef struct v4l2_buffer struct_v4l2_buffer;
 typedef struct v4l2_clip struct_v4l2_clip;
 typedef struct v4l2_create_buffers struct_v4l2_create_buffers;
