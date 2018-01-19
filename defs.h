@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1991, 1992 Paul Kranenburg <pk@cs.few.eur.nl>
+ * Copyright (c) 1991, 1992, 2018 Paul Kranenburg <pk@cs.few.eur.nl>
  * Copyright (c) 1993 Branko Lankester <branko@hacktic.nl>
  * Copyright (c) 1993, 1994, 1995, 1996 Rick Sladkey <jrs@world.std.com>
  * Copyright (c) 2001-2017 The strace developers.
@@ -391,6 +391,8 @@ extern void set_sortby(const char *);
 extern void set_overhead(int);
 extern void print_pc(struct tcb *);
 
+extern struct iovec* arch_iovec_for_getregset(void);
+
 extern int syscall_entering_decode(struct tcb *);
 extern int syscall_entering_trace(struct tcb *, unsigned int *);
 extern void syscall_entering_finish(struct tcb *, int);
@@ -399,10 +401,12 @@ extern int syscall_exiting_decode(struct tcb *, struct timeval *);
 extern int syscall_exiting_trace(struct tcb *, struct timeval, int);
 extern void syscall_exiting_finish(struct tcb *);
 
+extern int trace_syscall(struct tcb *, unsigned int *);
 extern void update_personality(struct tcb *tcp, unsigned int personality);
 extern void count_syscall(struct tcb *, const struct timeval *);
 extern void call_summary(FILE *);
 
+extern int get_scno(struct tcb *);
 extern kernel_ulong_t get_rt_sigframe_addr(struct tcb *);
 
 /**

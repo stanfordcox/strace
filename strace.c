@@ -62,6 +62,10 @@ extern char **environ;
 extern int optind;
 extern char *optarg;
 
+#ifdef ENABLE_GDBSERVER
+extern struct tracing_backend gdbserver_backend;
+#endif
+
 #ifdef USE_LIBUNWIND
 /* if this is true do the stack trace for every system call */
 bool stack_trace_enabled;
@@ -1749,7 +1753,7 @@ init(int argc, char *argv[])
 			break;
 #ifdef ENABLE_GDBSERVER
 		case 'G':
-			set_tracing_backend(gdbserver_backend);
+			set_tracing_backend(&gdbserver_backend);
 			tracing_backend_handle_arg(c, optarg);
 			break;
 #endif
@@ -2498,7 +2502,7 @@ ptrace_next_event(int *pstatus, void *data)
 	}
 }
 
-static int
+int
 trace_syscall(struct tcb *tcp, unsigned int *sig)
 {
 	if (entering(tcp)) {
@@ -2637,7 +2641,6 @@ dispatch_event(enum trace_event ret, int *pstatus, void *data)
 		print_stopped(current_tcp, NULL, restart_sig);
 
 		handle_group_stop(&restart_sig, data);
-
 		break;
 
 	case TE_EXITED:

@@ -37,6 +37,7 @@
 #include "protocol.h"
 #include "scno.h"
 #include "signals.h"
+#include "ptrace_backend.h"
 
 /* FIXME jistone: export hacks */
 struct tcb *pid2tcb(int pid);
@@ -368,8 +369,19 @@ gdb_prog_pid_check (char *exec_name, int nprocs)
 }
 
 
+struct gdb_trace_loop_data {
+	siginfo_t *si;
+	unsigned int restart_op;
+};
+
+void *
+gdb_alloc_trace_loop_storage(void)
+{
+	return xmalloc(sizeof(struct gdb_trace_loop_data));
+}
+
 bool
-gdb_start_init(void)
+gdb_start_init(int argc, char *argv[])
 {
 	gdb_signal_map_init();
 
@@ -400,7 +412,7 @@ gdb_start_init(void)
 	char multi_cmd[] = "qSupported:multiprocess+;QThreadEvents+"
 		";fork-events+;vfork-events+;exec-events+";
 
-	snprintf(multi_cmd, sizeof(multicmd), "qSupported:multiprocess+;"
+	snprintf(multi_cmd, sizeof(multi_cmd), "qSupported:multiprocess+;"
 		 "QThreadEvents+%s%s",
 		 followfork ? ";fork-events+;vfork-events+" : "",
 		 detach_on_execve ? ";exec-events" : "");
@@ -444,16 +456,18 @@ gdb_start_init(void)
 	 *     It's probably better to generate that list programmatically.
 	 *     Also, it's not entirely obvious what signals are excluded and
 	 *     why - additional points for programmatical generation. */
-	gdb_send_cstr(gdb,
-		      "QProgramSignals:0;1;3;4;6;7;8;9;a;b;c;d;e;f;10;11;12;"
-		      "13;14;15;16;17;18;19;1a;1b;1c;1d;1e;1f;20;21;22;23;24;"
-		      "25;26;27;28;29;2a;2b;2c;2d;2e;2f;30;31;32;33;34;35;36;"
-		      "37;38;39;3a;3b;3c;3d;3e;3f;40;41;42;43;44;45;46;47;48;"
-		      "49;4a;4b;4c;4d;4e;4f;50;51;52;53;54;55;56;57;58;59;5a;"
-		      "5b;5c;5d;5e;5f;60;61;62;63;64;65;66;67;68;69;6a;6b;6c;"
-		      "6d;6e;6f;70;71;72;73;74;75;76;77;78;79;7a;7b;7c;7d;7e;"
-		      "7f;80;81;82;83;84;85;86;87;88;89;8a;8b;8c;8d;8e;8f;90;"
-		      "91;92;93;94;95;96;97;";
+
+	static const char program_signals[] =
+		"QProgramSignals:0;1;3;4;6;7;8;9;a;b;c;d;e;f;10;11;12;"
+		"13;14;15;16;17;18;19;1a;1b;1c;1d;1e;1f;20;21;22;23;24;"
+		"25;26;27;28;29;2a;2b;2c;2d;2e;2f;30;31;32;33;34;35;36;"
+		"37;38;39;3a;3b;3c;3d;3e;3f;40;41;42;43;44;45;46;47;48;"
+		"49;4a;4b;4c;4d;4e;4f;50;51;52;53;54;55;56;57;58;59;5a;"
+		"5b;5c;5d;5e;5f;60;61;62;63;64;65;66;67;68;69;6a;6b;6c;"
+		"6d;6e;6f;70;71;72;73;74;75;76;77;78;79;7a;7b;7c;7d;7e;"
+		"7f;80;81;82;83;84;85;86;87;88;89;8a;8b;8c;8d;8e;8f;90;"
+		"91;92;93;94;95;96;97;";
+	gdb_send_cstr(gdb, program_signals);
 	if (!gdb_ok())
 		error_msg("couldn't enable GDB server signal passing");
 
@@ -823,11 +837,12 @@ gdb_detach(struct tcb *tcp)
 
 
 enum trace_event
-gdb_next_event(int *pstatus, siginfo_t *si)
+gdb_next_event(int *pstatus, void *si_p)
 {
 	int gdb_sig = 0;
 	pid_t tid;
 	struct tcb *tcp = NULL;
+	siginfo_t *si __attribute__ ((unused)) = (siginfo_t*)si_p;
 
 	if (interrupted)
 		return TE_BREAK;
@@ -869,6 +884,27 @@ gdb_next_event(int *pstatus, siginfo_t *si)
 	if (tid < 0 || tcp == NULL)
 		error_msg_and_die("couldn't read tid from stop reply: %.*s",
 				(int)stop.size, stop.reply);
+
+	/* Exit if the process has gone away */
+	if (tcp == 0)
+		return false;
+
+	tid = tcp->pid;
+	if (! (tcp->flags & TCB_GDB_CONT_PID_TID)) {
+		char cmd[] = "Hgxxxxxxxx";
+
+		snprintf(cmd, sizeof(cmd), "Hg%x.%x", general_pid, general_tid);
+		debug_func_msg("%s", cmd);
+	}
+
+	/* TODO need code equivalent to PTRACE_EVENT_EXEC? */
+
+	/* Is this the very first time we see this tracee stopped? */
+	if (tcp->flags & TCB_STARTUP) {
+		tcp->flags &= ~TCB_STARTUP;
+		if (get_scno(tcp) == 1)
+			tcp->s_prev_ent = tcp->s_ent;
+	}
 
 	switch (stop.type) {
 	case GDB_STOP_EXITED:
@@ -934,7 +970,7 @@ gdb_next_event(int *pstatus, siginfo_t *si)
 		break;
 	}
 
-	return TE_RESTART;
+	return TE_NEXT;
 }
 
 /*
@@ -1009,10 +1045,11 @@ gdb_dispatch_event(enum trace_event ret, int *pstatus, void *si_p)
 
 	case TE_STOP_BEFORE_EXECVE:
 	case TE_STOP_BEFORE_EXIT:
-		/* TODO handle this? */
+		/* TODO backend->handle_exec? */
 		return false;
 
 	case TE_GROUP_STOP:
+		/* TODO backend->handle_group_stop? */
 		trace_syscall(tcp, &sig);
 		sig = *pstatus;
 		return false;
@@ -1029,7 +1066,7 @@ gdb_dispatch_event(enum trace_event ret, int *pstatus, void *si_p)
 	if (have_notification())
 		return true;
 
-	if (gdb_sig) {
+	if (stop.code) {
 		if (gdb_vcont) {
 			/* send the signal to this target and continue everyone else */
 			char cmd[] = "vCont;Cxx:xxxxxxxx;c";
@@ -1093,6 +1130,12 @@ gdb_get_all_regs(pid_t tid, size_t *size)
 long gdb_get_regs(pid_t pid, void *io) { return -1; }
 #endif
 
+long
+gdb_get_registers(struct tcb * const tcp)
+{
+	return gdb_get_regs(tcp->pid, arch_iovec_for_getregset());
+}
+
 
 #ifdef GDBSERVER_ARCH_HAS_SET_REGS
 # include "gdb_set_regs.c"
@@ -1106,6 +1149,13 @@ gdb_get_scno(struct tcb *tcp)
 {
 	return 1;
 }
+
+int
+gdb_set_scno(struct tcb *tcp, kernel_ulong_t scno)
+{
+	return -1;
+}
+
 
 int
 gdb_read_mem(pid_t tid, long addr, unsigned int len, bool check_nil, char *out)
@@ -1198,17 +1248,17 @@ gdb_umovestr(struct tcb *const tcp, kernel_ulong_t addr, unsigned int len, char 
 }
 
 int
-gdb_upeek(int pid, unsigned long off, kernel_ulong_t *res)
+gdb_upeek(struct tcb *tcp, unsigned long off, kernel_ulong_t *res)
 {
-	return gdb_read_mem(pid, off, current_wordsize, false, (char*)res);
+	return gdb_read_mem(tcp->pid, off, current_wordsize, false, (char*)res);
 }
 
 
 int
-gdb_upoke(int pid, unsigned long off, kernel_ulong_t res)
+gdb_upoke(struct tcb *tcp, unsigned long off, kernel_ulong_t res)
 {
 	kernel_ulong_t buffer = res;
-	return gdb_write_mem(pid, off, current_wordsize, (char*)&buffer);
+	return gdb_write_mem(tcp->pid, off, current_wordsize, (char*)&buffer);
 }
 
 
@@ -1267,22 +1317,109 @@ gdb_handle_arg(char arg, char *optarg)
 		return false;
 
 	gdbserver = optarg;
-	backend.attach_tcb = gdb_attach_tcb;
-	backend.cleanup = gdb_cleanup;
-	backend.detach = gdb_detach;
-	backend.dispatch_event = gdb_dispatch_event;
-	backend.end_init = gdb_end_init;
-	backend.get_regs = gdb_get_regs;
-	backend.get_scno = gdb_get_scno;
-	backend.getfdpath = gdb_getfdpath;
-	backend.next_event = gdb_next_event;
-	backend.prog_pid_check = gdb_prog_pid_check;
-	backend.start_init = gdb_start_init;
-	backend.startup_child = gdb_startup_child;
-	backend.umoven = gdb_umoven;
-	backend.umovestr = gdb_umovestr;
-	backend.upeek_ = gdb_upeek;
-	backend.upoke_ = gdb_upoke;
-	backend.verify_args = gdb_verify_args;
 	return true;
 }
+
+
+bool
+gdb_restart_process(struct tcb *current_tcp, unsigned int restart_sig,
+		       void *data)
+{
+	int gdb_sig = 0 /*stop.code*/;
+	pid_t tid = current_tcp->pid;
+
+	if (current_tcp->scno == __NR_exit_group)
+		return false;
+
+	if (have_notification())
+		return true;
+
+	if (gdb_sig) {
+		if (gdb_vcont) {
+			/* send the signal to this target and continue everyone else */
+			char cmd[] = "vCont;Cxx:xxxxxxxx;c";
+
+			snprintf(cmd, sizeof(cmd),
+				 "vCont;C%02x:%x;c", gdb_sig, tid);
+			gdb_send_str(gdb, cmd);
+		} else {
+			/* just send the signal */
+			char cmd[] = "Cxx";
+
+			snprintf(cmd, sizeof(cmd), "C%02x", gdb_sig);
+			gdb_send_str(gdb, cmd);
+		}
+	} else {
+		if (gdb_vcont) {
+			/* For non-stop use $vCont;c:pid.tid where
+			 * pid.tid is the thread gdbserver is focused
+			 * on */
+			char cmd[] = "vCont;c:xxxxxxxx.xxxxxxxx";
+			struct tcb *general_tcp =
+				gdb_find_thread(general_tid, true);
+
+			if (gdb_has_non_stop(gdb) &&
+			    general_pid != general_tid &&
+			    general_tcp->flags & TCB_GDB_CONT_PID_TID)
+				snprintf(cmd, sizeof(cmd), "vCont;c:p%x.%x",
+					 general_pid, general_tid);
+			else
+				snprintf(cmd, sizeof(cmd), "vCont;c");
+
+			gdb_send_str(gdb, cmd);
+		} else {
+			gdb_send_cstr(gdb, "c");
+		}
+	}
+	return true;
+}
+
+
+void
+gdb_handle_group_stop(unsigned int *restart_sig, void *data)
+{
+//	struct ptrace_trace_loop_data *trace_loop_data = data;
+}
+
+
+const struct tracing_backend gdbserver_backend = {
+	.name               = "gdbserver",
+	.handle_arg         = gdb_handle_arg,
+	.init               = gdb_start_init,
+	.post_init          = gdb_end_init,
+
+	.startup_child      = gdb_startup_child,
+	.attach_tcb         = gdb_attach_tcb,
+	.detach             = gdb_detach,
+	.cleanup            = gdb_cleanup,
+
+	.alloc_tls          = gdb_alloc_trace_loop_storage,
+	.next_event         = gdb_next_event,
+	.handle_exec        = (0),
+	.handle_group_stop  = gdb_handle_group_stop,
+	.get_siginfo        = (0),
+	.restart_process    = gdb_restart_process,
+
+	.clear_regs         = (0),
+	.get_regs           = gdb_get_registers,
+	.get_scno           = gdb_get_scno,
+	.set_scno           = gdb_set_scno,
+	.set_error          = ptrace_set_error,
+	.set_success        = ptrace_set_success,
+	.get_syscall_result = ptrace_get_syscall_result,
+
+	.umoven             = gdb_umoven,
+	.umovestr           = gdb_umovestr,
+	.upeek              = gdb_upeek,
+	.upoke              = gdb_upoke,
+
+	.realpath           = (0),
+	.open               = (0),
+	.pread              = (0),
+	.close              = (0),
+	.readlink           = (0),
+	.getxattr           = (0),
+	.socket             = (0),
+	.sendmsg            = (0),
+	.recvmsg            = (0),
+};

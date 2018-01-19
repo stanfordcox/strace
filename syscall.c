@@ -1108,6 +1108,17 @@ ptrace_clear_regs(struct tcb *tcp)
 #endif
 }
 
+struct iovec*
+arch_iovec_for_getregset(void)
+{
+#ifdef ARCH_IOVEC_FOR_GETREGSET	
+	return (struct iovec*)&ARCH_IOVEC_FOR_GETREGSET;
+#else
+	return null;
+#endif
+}
+
+
 long
 ptrace_get_regs(struct tcb *const tcp)
 {
@@ -1170,6 +1181,13 @@ free_sysent_buf(void *ptr)
 	free(ptr);
 }
 
+int
+ptrace_get_scno (struct tcb *tcp)
+{
+	return arch_get_scno(tcp);
+}
+
+
 /*
  * Returns:
  * 0: "ignore this ptrace stop", syscall_entering_decode() should return a "bail
@@ -1179,12 +1197,12 @@ free_sysent_buf(void *ptr)
  *    ("????" etc) and return an appropriate code.
  */
 int
-ptrace_get_scno(struct tcb *tcp)
+get_scno(struct tcb *tcp)
 {
 	if (get_regs(tcp) < 0)
 		return -1;
 
-	int rc = arch_get_scno(tcp);
+	int rc = get_syscall(tcp);
 	if (rc != 1)
 		return rc;
 

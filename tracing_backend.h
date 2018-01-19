@@ -31,7 +31,7 @@
 #include "defs.h"
 #include "trace_event.h"
 
-#if ADDITIONAL_TRACING_PACKENDS
+#if ADDITIONAL_TRACING_BACKENDS
 
 struct msghdr;
 
@@ -164,7 +164,7 @@ tracing_backend_handle_arg(char arg, char *optarg)
 }
 
 static inline bool
-tracing_backend_init(int argc, char *argv[]);
+tracing_backend_init(int argc, char *argv[])
 {
 	if (cur_tracing_backend->init)
 		return cur_tracing_backend->init(argc, argv);
@@ -265,7 +265,7 @@ get_regs(struct tcb * const tcp)
 }
 
 static inline int
-get_scno(struct tcb *tcp)
+get_syscall(struct tcb *tcp)
 {
 	return cur_tracing_backend->get_scno(tcp);
 }
@@ -389,12 +389,12 @@ tracee_recvmsg(struct tcb *tcp, int fd, struct msghdr *msg, int flags)
 		return ENOSYS;
 }
 
-#else /* !ADDITIONAL_TRACING_PACKENDS */
+#else /* !ADDITIONAL_TRACING_BACKENDS */
 
 # include "ptrace_backend.h"
 
 # define tracing_backend_name()      "ptrace"
-# define tracing_backend_handle_arg  false
+# define tracing_backend_handle_arg   false &&
 # define tracing_backend_init        ptrace_init
 # define tracing_backend_post_init() (void)0
 # define startup_child               ptrace_startup_child

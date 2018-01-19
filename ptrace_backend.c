@@ -51,7 +51,7 @@ ptrace_open(struct tcb *tcp, const char *path, int flags, int mode)
 	return open_file(path, flags, mode);
 }
 
-#if ADDITIONAL_TRACING_PACKENDS
+#if ADDITIONAL_TRACING_BACKENDS
 
 static char *
 ptrace_realpath(struct tcb *tcp, const char *path, char *resolved_path)
@@ -144,4 +144,4 @@ const struct tracing_backend ptrace_backend = {
 	.recvmsg            = ptrace_recvmsg,
 };
 
-#endif /* ADDITIONAL_TRACING_PACKENDS */
+#endif /* ADDITIONAL_TRACING_BACKENDS */

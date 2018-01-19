@@ -64,10 +64,10 @@ extern int ptrace_upoke(struct tcb *tcp, unsigned long off, kernel_ulong_t val);
 
 extern int ptrace_open(struct tcb *tcp, const char *path, int flags, int mode);
 
-#if ADDITIONAL_TRACING_PACKENDS
+#if ADDITIONAL_TRACING_BACKENDS
 
 extern const struct tracing_backend ptrace_backend;
 
-#endif /* ADDITIONAL_TRACING_PACKENDS */
+#endif /* ADDITIONAL_TRACING_BACKENDS */
 
 #endif /* !STRACE_PTRACE_BACKEND_H */
