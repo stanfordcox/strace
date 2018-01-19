@@ -218,8 +218,11 @@ END {
 
 	for (item in array_special) {
 		if (array[item, "special"] == "pointer_type") {
+			print "#ifndef mpers_ptr_t"
 			print "typedef uint" \
 				8 * array_get(item, "byte_size") "_t mpers_ptr_t;"
+			print "# define mpers_ptr_t mpers_ptr_t"
+			print "#endif"
 			break
 		}
 	}
