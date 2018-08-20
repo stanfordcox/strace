@@ -1,6 +1,7 @@
 # Map git author names and email addresses to canonical/preferred form.
 <ak@linux.intel.com>	<ak@suse.de>
-<chenjingpiao@gmail.com>	<chenjingpiao@foxmail.com>
+Chen Jingpiao	<chenjingpiao@gmail.com>
+Chen Jingpiao	<chenjingpiao@gmail.com>	<chenjingpiao@foxmail.com>
 <damir@altlinux.org>	<damir@altlinux.ru>
 <dgilbert@redhat.com>	<dave@treblig.org>
 <edgar.iglesias@gmail.com>	<edgar@axis.com>
@@ -19,6 +20,7 @@
 <will@williammanley.net>	<william.manley@youview.com>
 Carmelo Amoroso	<carmelo.amoroso@st.com>
 Edgar Kaziakhmedov	<edgar.kaziakhmedov@virtuozzo.com>	<edos@linux.com>
+Elvira Khabirova	<lineprinter@altlinux.org>	<lineprinter0@gmail.com>
 Eugene Syromyatnikov	<evgsyr@gmail.com>
 Eugene Syromyatnikov	<evgsyr@gmail.com>	<esyr@redhat.com>
 Frederik Schüler	<fs@debian.org>

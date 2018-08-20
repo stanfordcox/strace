@@ -4,7 +4,7 @@
  * Copyright (c) 1993-1996 Rick Sladkey <jrs@world.std.com>
  * Copyright (c) 1996-1999 Wichert Akkerman <wichert@cistron.nl>
  * Copyright (c) 2003-2016 Dmitry V. Levin <ldv@altlinux.org>
- * Copyright (c) 2014-2017 The strace developers.
+ * Copyright (c) 2014-2018 The strace developers.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -55,7 +55,7 @@
 #include "defs.h"
 
 #ifdef STRACE_UID_SIZE
-# if !NEED_UID16_PARSERS
+# if !HAVE_ARCH_UID16_SYSCALLS
 #  undef STRACE_UID_SIZE
 # endif
 #else
@@ -71,14 +71,14 @@
 
 SYS_FUNC(getuid)
 {
-	return RVAL_UDECIMAL | RVAL_DECODED;
+	return RVAL_DECODED;
 }
 
 SYS_FUNC(setfsuid)
 {
 	printuid("", tcp->u_arg[0]);
 
-	return RVAL_UDECIMAL | RVAL_DECODED;
+	return RVAL_DECODED;
 }
 
 SYS_FUNC(setuid)
@@ -180,7 +180,7 @@ print_groups(struct tcb *const tcp, const unsigned int len,
 
 	uid_t gid;
 	print_array(tcp, addr, len, &gid, sizeof(gid),
-		    umoven_or_printaddr, print_gid, 0);
+		    tfetch_mem, print_gid, 0);
 }
 
 SYS_FUNC(setgroups)

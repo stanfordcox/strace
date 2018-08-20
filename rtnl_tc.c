@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2016 Fabien Siron <fabien.siron@epita.fr>
  * Copyright (c) 2017 JingPiao Chen <chenjingpiao@gmail.com>
- * Copyright (c) 2016-2017 The strace developers.
+ * Copyright (c) 2016-2018 The strace developers.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -259,7 +259,7 @@ decode_tca_stab_data(struct tcb *const tcp,
 		return false;
 
 	print_array(tcp, addr, nmemb, &data, sizeof(data),
-		    umoven_or_printaddr, print_stab_data, NULL);
+		    tfetch_mem, print_stab_data, NULL);
 
 	return true;
 }
@@ -293,7 +293,10 @@ static const nla_decoder_t tcmsg_nla_decoders[] = {
 	[TCA_STAB]		= decode_tca_stab,
 	[TCA_PAD]		= NULL,
 	[TCA_DUMP_INVISIBLE]	= NULL,
-	[TCA_CHAIN]		= decode_nla_u32
+	[TCA_CHAIN]		= decode_nla_u32,
+	[TCA_HW_OFFLOAD]	= decode_nla_u8,
+	[TCA_INGRESS_BLOCK]	= decode_nla_u32,
+	[TCA_EGRESS_BLOCK]	= decode_nla_u32,
 };
 
 DECL_NETLINK_ROUTE_DECODER(decode_tcmsg)
@@ -308,7 +311,7 @@ DECL_NETLINK_ROUTE_DECODER(decode_tcmsg)
 	if (len >= sizeof(tcmsg)) {
 		if (!umoven_or_printaddr(tcp, addr + offset,
 					 sizeof(tcmsg) - offset,
-					 (void *) &tcmsg + offset)) {
+					 (char *) &tcmsg + offset)) {
 			PRINT_FIELD_IFINDEX("", tcmsg, tcm_ifindex);
 			PRINT_FIELD_U(", ", tcmsg, tcm_handle);
 			PRINT_FIELD_U(", ", tcmsg, tcm_parent);

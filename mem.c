@@ -5,7 +5,7 @@
  * Copyright (c) 1996-1999 Wichert Akkerman <wichert@cistron.nl>
  * Copyright (c) 2000 PocketPenguins Inc.  Linux for Hitachi SuperH
  *                    port by Greg Banks <gbanks@pocketpenguins.com>
- * Copyright (c) 1999-2017 The strace developers.
+ * Copyright (c) 1999-2018 The strace developers.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -40,8 +40,18 @@ get_pagesize(void)
 {
 	static unsigned long pagesize;
 
-	if (!pagesize)
-		pagesize = sysconf(_SC_PAGESIZE);
+	if (!pagesize) {
+		long ret = sysconf(_SC_PAGESIZE);
+
+		if (ret < 0)
+			perror_func_msg_and_die("sysconf(_SC_PAGESIZE)");
+		if (ret == 0)
+			error_func_msg_and_die("sysconf(_SC_PAGESIZE) "
+					       "returned 0");
+
+		pagesize = (unsigned long) ret;
+	}
+
 	return pagesize;
 }
 
@@ -73,7 +83,10 @@ print_mmap_flags(kernel_ulong_t flags)
 	const unsigned int hugetlb_value = flags & mask;
 
 	flags &= ~mask;
-	addflags(mmap_flags, flags);
+	if (flags) {
+		tprints("|");
+		printflags64(mmap_flags, flags, NULL);
+	}
 
 	if (hugetlb_value)
 		tprintf("|%u<<MAP_HUGE_SHIFT",
@@ -107,51 +120,43 @@ print_mmap(struct tcb *tcp, kernel_ulong_t *u_arg, unsigned long long offset)
  * Confused? Me too!
  */
 
-#if defined AARCH64 || defined ARM \
- || defined I386 || defined X86_64 || defined X32 \
- || defined M68K \
- || defined S390 || defined S390X
+#if HAVE_ARCH_OLD_MMAP
 /* Params are pointed to by u_arg[0], offset is in bytes */
 SYS_FUNC(old_mmap)
 {
-	kernel_ulong_t u_arg[6];
-# if ANY_WORDSIZE_LESS_THAN_KERNEL_LONG
-	/* We are here only in a 32-bit personality. */
-	unsigned int narrow_arg[6];
-	if (umove_or_printaddr(tcp, tcp->u_arg[0], &narrow_arg))
-		return RVAL_DECODED | RVAL_HEX;
-	unsigned int i;
-	for (i = 0; i < 6; i++)
-		u_arg[i] = narrow_arg[i];
-# else
-	if (umove_or_printaddr(tcp, tcp->u_arg[0], &u_arg))
-		return RVAL_DECODED | RVAL_HEX;
-# endif
-	print_mmap(tcp, u_arg, u_arg[5]);
+	kernel_ulong_t *args =
+		fetch_indirect_syscall_args(tcp, tcp->u_arg[0], 6);
+
+	if (args)
+		print_mmap(tcp, args, args[5]);
+	else
+		printaddr(tcp->u_arg[0]);
 
 	return RVAL_DECODED | RVAL_HEX;
 }
-#endif /* old_mmap architectures */
 
-#ifdef S390
+# if HAVE_ARCH_OLD_MMAP_PGOFF
 /* Params are pointed to by u_arg[0], offset is in pages */
 SYS_FUNC(old_mmap_pgoff)
 {
-	kernel_ulong_t u_arg[5];
-	int i;
-	unsigned int narrow_arg[6];
-	unsigned long long offset;
-	if (umove_or_printaddr(tcp, tcp->u_arg[0], &narrow_arg))
-		return RVAL_DECODED | RVAL_HEX;
-	for (i = 0; i < 5; i++)
-		u_arg[i] = narrow_arg[i];
-	offset = narrow_arg[5];
-	offset *= get_pagesize();
-	print_mmap(tcp, u_arg, offset);
+	kernel_ulong_t *args =
+		fetch_indirect_syscall_args(tcp, tcp->u_arg[0], 6);
+
+	if (args) {
+		unsigned long long offset;
+
+		offset = args[5];
+		offset *= get_pagesize();
+
+		print_mmap(tcp, args, offset);
+	} else {
+		printaddr(tcp->u_arg[0]);
+	}
 
 	return RVAL_DECODED | RVAL_HEX;
 }
-#endif /* S390 */
+# endif /* HAVE_ARCH_OLD_MMAP_PGOFF */
+#endif /* HAVE_ARCH_OLD_MMAP */
 
 /* Params are passed directly, offset is in bytes */
 SYS_FUNC(mmap)
@@ -317,14 +322,6 @@ SYS_FUNC(mincore)
 	return 0;
 }
 
-#if defined ALPHA || defined IA64 || defined M68K \
- || defined SPARC || defined SPARC64
-SYS_FUNC(getpagesize)
-{
-	return RVAL_DECODED | RVAL_HEX;
-}
-#endif
-
 SYS_FUNC(remap_file_pages)
 {
 	const kernel_ulong_t addr = tcp->u_arg[0];
@@ -363,7 +360,7 @@ SYS_FUNC(subpage_prot)
 
 	unsigned int entry;
 	print_array(tcp, map, nmemb, &entry, sizeof(entry),
-		    umoven_or_printaddr, print_protmap_entry, 0);
+		    tfetch_mem, print_protmap_entry, 0);
 
 	return RVAL_DECODED;
 }

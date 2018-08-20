@@ -8,7 +8,7 @@
  *                    <barrow_dj@mail.yahoo.com,djbarrow@de.ibm.com>
  * Copyright (c) 2004 Roland McGrath <roland@redhat.com>
  * Copyright (c) 2006 Dmitry V. Levin <ldv@altlinux.org>
- * Copyright (c) 2006-2017 The strace developers.
+ * Copyright (c) 2006-2018 The strace developers.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -39,73 +39,45 @@
 /* Per-syscall stats structure */
 struct call_counts {
 	/* time may be total latency or system time */
-	struct timeval time;
-	int calls, errors;
+	struct timespec time;
+	unsigned int calls, errors;
 };
 
 static struct call_counts *countv[SUPPORTED_PERSONALITIES];
 #define counts (countv[current_personality])
 
-static struct timeval shortest = { 1000000, 0 };
+static struct timespec overhead;
 
 void
-count_syscall(struct tcb *tcp, const struct timeval *syscall_exiting_tv)
+count_syscall(struct tcb *tcp, const struct timespec *syscall_exiting_ts)
 {
-	struct timeval wtv;
-	struct timeval *tv = &wtv;
-	struct call_counts *cc;
-
 	if (!scno_in_range(tcp->scno))
 		return;
 
 	if (!counts)
 		counts = xcalloc(nsyscalls, sizeof(*counts));
-	cc = &counts[tcp->scno];
+	struct call_counts *cc = &counts[tcp->scno];
 
 	cc->calls++;
 	if (syserror(tcp))
 		cc->errors++;
 
-	/* tv = wall clock time spent while in syscall */
-	tv_sub(tv, syscall_exiting_tv, &tcp->etime);
+	if (count_wallclock) {
+		/* wall clock time spent while in syscall */
+		struct timespec wts;
+		ts_sub(&wts, syscall_exiting_ts, &tcp->etime);
 
-	/* Spent more wall clock time than spent system time? (usually yes) */
-	if (tv_cmp(tv, &tcp->dtime) > 0) {
-		static struct timeval one_tick = { -1, 0 };
-
-		if (one_tick.tv_sec == -1) {
-			/* Initialize it.  */
-			struct itimerval it;
-
-			memset(&it, 0, sizeof(it));
-			it.it_interval.tv_usec = 1;
-			setitimer(ITIMER_REAL, &it, NULL);
-			getitimer(ITIMER_REAL, &it);
-			one_tick = it.it_interval;
-//FIXME: this hack doesn't work (tested on linux-3.6.11): one_tick = 0.000000
-//tprintf(" one_tick.tv_usec:%u\n", (unsigned)one_tick.tv_usec);
-		}
-
-		if (tv_nz(&tcp->dtime))
-			/* tv = system time spent, if it isn't 0 */
-			tv = &tcp->dtime;
-		else if (tv_cmp(tv, &one_tick) > 0) {
-			/* tv = smallest "sane" time interval */
-			if (tv_cmp(&shortest, &one_tick) < 0)
-				tv = &shortest;
-			else
-				tv = &one_tick;
-		}
+		ts_add(&cc->time, &cc->time, &wts);
+	} else {
+		/* system CPU time spent while in syscall */
+		ts_add(&cc->time, &cc->time, &tcp->dtime);
 	}
-	if (tv_cmp(tv, &shortest) < 0)
-		shortest = *tv;
-	tv_add(&cc->time, &cc->time, count_wallclock ? &wtv : tv);
 }
 
 static int
 time_cmp(void *a, void *b)
 {
-	return -tv_cmp(&counts[*((int *) a)].time,
+	return -ts_cmp(&counts[*((int *) a)].time,
 		       &counts[*((int *) b)].time);
 }
 
@@ -127,7 +99,6 @@ count_cmp(void *a, void *b)
 }
 
 static int (*sortfun)();
-static struct timeval overhead = { -1, -1 };
 
 void
 set_sortby(const char *sortby)
@@ -148,79 +119,72 @@ set_sortby(const char *sortby)
 void set_overhead(int n)
 {
 	overhead.tv_sec = n / 1000000;
-	overhead.tv_usec = n % 1000000;
+	overhead.tv_nsec = n % 1000000 * 1000;
 }
 
 static void
 call_summary_pers(FILE *outf)
 {
+	static const char dashes[]  = "----------------";
+	static const char header[]  = "%6.6s %11.11s %11.11s %9.9s %9.9s %s\n";
+	static const char data[]    = "%6.2f %11.6f %11lu %9u %9.u %s\n";
+	static const char summary[] = "%6.6s %11.6f %11.11s %9u %9.u %s\n";
+
 	unsigned int i;
-	int     call_cum, error_cum;
-	struct timeval tv_cum, dtv;
+	unsigned int call_cum, error_cum;
+	struct timespec tv_cum, dtv;
 	double  float_tv_cum;
 	double  percent;
-	const char *dashes = "----------------";
-	char    error_str[sizeof(int)*3];
-	int    *sorted_count;
+	unsigned int *sorted_count;
 
-	fprintf(outf, "%6.6s %11.11s %11.11s %9.9s %9.9s %s\n",
+	fprintf(outf, header,
 		"% time", "seconds", "usecs/call",
 		"calls", "errors", "syscall");
-	fprintf(outf, "%6.6s %11.11s %11.11s %9.9s %9.9s %s\n",
-		dashes, dashes, dashes, dashes, dashes, dashes);
+	fprintf(outf, header, dashes, dashes, dashes, dashes, dashes, dashes);
 
-	sorted_count = xcalloc(sizeof(int), nsyscalls);
-	call_cum = error_cum = tv_cum.tv_sec = tv_cum.tv_usec = 0;
-	if (overhead.tv_sec == -1) {
-		tv_mul(&overhead, &shortest, 8);
-		tv_div(&overhead, &overhead, 10);
-	}
+	sorted_count = xcalloc(sizeof(sorted_count[0]), nsyscalls);
+	call_cum = error_cum = tv_cum.tv_sec = tv_cum.tv_nsec = 0;
 	for (i = 0; i < nsyscalls; i++) {
 		sorted_count[i] = i;
 		if (counts == NULL || counts[i].calls == 0)
 			continue;
-		tv_mul(&dtv, &overhead, counts[i].calls);
-		tv_sub(&counts[i].time, &counts[i].time, &dtv);
+		ts_mul(&dtv, &overhead, counts[i].calls);
+		ts_sub(&counts[i].time, &counts[i].time, &dtv);
+		if (counts[i].time.tv_sec < 0 || counts[i].time.tv_nsec < 0)
+			counts[i].time.tv_sec = counts[i].time.tv_nsec = 0;
 		call_cum += counts[i].calls;
 		error_cum += counts[i].errors;
-		tv_add(&tv_cum, &tv_cum, &counts[i].time);
+		ts_add(&tv_cum, &tv_cum, &counts[i].time);
 	}
-	float_tv_cum = tv_float(&tv_cum);
+	float_tv_cum = ts_float(&tv_cum);
 	if (counts) {
 		if (sortfun)
-			qsort((void *) sorted_count, nsyscalls, sizeof(int), sortfun);
+			qsort((void *) sorted_count, nsyscalls,
+			      sizeof(sorted_count[0]), sortfun);
 		for (i = 0; i < nsyscalls; i++) {
 			double float_syscall_time;
-			int idx = sorted_count[i];
+			unsigned int idx = sorted_count[i];
 			struct call_counts *cc = &counts[idx];
 			if (cc->calls == 0)
 				continue;
-			tv_div(&dtv, &cc->time, cc->calls);
-			error_str[0] = '\0';
-			if (cc->errors)
-				sprintf(error_str, "%u", cc->errors);
-			float_syscall_time = tv_float(&cc->time);
+			ts_div(&dtv, &cc->time, cc->calls);
+			float_syscall_time = ts_float(&cc->time);
 			percent = (100.0 * float_syscall_time);
 			if (percent != 0.0)
 				   percent /= float_tv_cum;
 			/* else: float_tv_cum can be 0.0 too and we get 0/0 = NAN */
-			fprintf(outf, "%6.2f %11.6f %11lu %9u %9.9s %s\n",
+			fprintf(outf, data,
 				percent, float_syscall_time,
-				(long) (1000000 * dtv.tv_sec + dtv.tv_usec),
-				cc->calls,
-				error_str, sysent[idx].sys_name);
+				(long) (1000000 * dtv.tv_sec + dtv.tv_nsec / 1000),
+				cc->calls, cc->errors, sysent[idx].sys_name);
 		}
 	}
 	free(sorted_count);
 
-	fprintf(outf, "%6.6s %11.11s %11.11s %9.9s %9.9s %s\n",
-		dashes, dashes, dashes, dashes, dashes, dashes);
-	error_str[0] = '\0';
-	if (error_cum)
-		sprintf(error_str, "%u", error_cum);
-	fprintf(outf, "%6.6s %11.6f %11.11s %9u %9.9s %s\n",
+	fprintf(outf, header, dashes, dashes, dashes, dashes, dashes, dashes);
+	fprintf(outf, summary,
 		"100.00", float_tv_cum, "",
-		call_cum, error_str, "total");
+		call_cum, error_cum, "total");
 }
 
 void
@@ -236,8 +200,8 @@ call_summary(FILE *outf)
 			set_personality(i);
 		if (i)
 			fprintf(outf,
-				"System call usage summary for %d bit mode:\n",
-				current_wordsize * 8);
+				"System call usage summary for %s mode:\n",
+				personality_names[i]);
 		call_summary_pers(outf);
 	}
 

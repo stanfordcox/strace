@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2016 Fabien Siron <fabien.siron@epita.fr>
  * Copyright (c) 2017 JingPiao Chen <chenjingpiao@gmail.com>
- * Copyright (c) 2016-2017 The strace developers.
+ * Copyright (c) 2016-2018 The strace developers.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -79,6 +79,28 @@ decode_fib_rule_uid_range(struct tcb *const tcp,
 #endif
 }
 
+static bool
+decode_rule_port_range(struct tcb *const tcp,
+		       const kernel_ulong_t addr,
+		       const unsigned int len,
+		       const void *const opaque_data)
+{
+	struct /* fib_rule_port_range */ {
+		uint16_t start;
+		uint16_t end;
+	} range;
+
+	if (len < sizeof(range))
+		return false;
+	else if (!umove_or_printaddr(tcp, addr, &range)) {
+		PRINT_FIELD_U("{", range, start);
+		PRINT_FIELD_U(", ", range, end);
+		tprints("}");
+	}
+
+	return true;
+}
+
 static const nla_decoder_t fib_rule_hdr_nla_decoders[] = {
 	[FRA_DST]			= decode_rule_addr,
 	[FRA_SRC]			= decode_rule_addr,
@@ -95,7 +117,11 @@ static const nla_decoder_t fib_rule_hdr_nla_decoders[] = {
 	[FRA_OIFNAME]			= decode_nla_str,
 	[FRA_PAD]			= NULL,
 	[FRA_L3MDEV]			= decode_nla_u8,
-	[FRA_UID_RANGE]			= decode_fib_rule_uid_range
+	[FRA_UID_RANGE]			= decode_fib_rule_uid_range,
+	[FRA_PROTOCOL]			= decode_nla_rt_proto,
+	[FRA_IP_PROTO]			= decode_nla_ip_proto,
+	[FRA_SPORT_RANGE]		= decode_rule_port_range,
+	[FRA_DPORT_RANGE]		= decode_rule_port_range,
 };
 
 DECL_NETLINK_ROUTE_DECODER(decode_fib_rule_hdr)
@@ -116,7 +142,7 @@ DECL_NETLINK_ROUTE_DECODER(decode_fib_rule_hdr)
 	if (len >= sizeof(msg)) {
 		if (!umoven_or_printaddr(tcp, addr + offset,
 					 sizeof(msg) - offset,
-					 (void *) &msg + offset)) {
+					 (char *) &msg + offset)) {
 			tprintf("dst_len=%u, src_len=%u",
 				msg.rtm_dst_len, msg.rtm_src_len);
 			tprints(", tos=");

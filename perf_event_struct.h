@@ -40,7 +40,8 @@ struct perf_event_attr {
 		 use_clockid			:1,
 		 context_switch			:1,
 		 write_backward			:1,
-		 __reserved_1			:36;
+		 namespaces			:1,
+		 __reserved_1			:35;
 	union {
 		uint32_t wakeup_events;
 		uint32_t wakeup_watermark;
@@ -68,6 +69,12 @@ struct perf_event_attr {
 	uint16_t sample_max_stack;
 	uint16_t __reserved_2;
 	/* End of ver 5 - 112 bytes */
+};
+
+struct perf_event_query_bpf {
+        uint32_t ids_len;
+        uint32_t prog_cnt;
+        uint32_t ids[0];
 };
 
 #endif /* !STRACE_LINUX_PERF_EVENT_STRUCT_H */

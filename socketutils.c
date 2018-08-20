@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2014 Zubin Mithra <zubin.mithra@gmail.com>
  * Copyright (c) 2014-2016 Dmitry V. Levin <ldv@altlinux.org>
- * Copyright (c) 2014-2017 The strace developers.
+ * Copyright (c) 2014-2018 The strace developers.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -45,6 +45,8 @@
 #ifndef UNIX_PATH_MAX
 # define UNIX_PATH_MAX sizeof(((struct sockaddr_un *) 0)->sun_path)
 #endif
+
+#include "xstring.h"
 
 typedef struct {
 	unsigned long inode;
@@ -163,6 +165,10 @@ inet_parse_response(const void *const data, const int data_len,
 	char src_buf[text_size];
 	char *details;
 
+	/* open/closing brackets for IPv6 addresses */
+	const char *ob = diag_msg->idiag_family == AF_INET6 ? "[" : "";
+	const char *cb = diag_msg->idiag_family == AF_INET6 ? "]" : "";
+
 	if (!inet_ntop(diag_msg->idiag_family, diag_msg->id.idiag_src,
 		       src_buf, text_size))
 		return -1;
@@ -175,12 +181,14 @@ inet_parse_response(const void *const data, const int data_len,
 			       dst_buf, text_size))
 			return -1;
 
-		if (asprintf(&details, "%s:[%s:%u->%s:%u]", proto_name,
-			     src_buf, ntohs(diag_msg->id.idiag_sport),
-			     dst_buf, ntohs(diag_msg->id.idiag_dport)) < 0)
+		if (asprintf(&details, "%s:[%s%s%s:%u->%s%s%s:%u]", proto_name,
+			     ob, src_buf, cb, ntohs(diag_msg->id.idiag_sport),
+			     ob, dst_buf, cb, ntohs(diag_msg->id.idiag_dport))
+		    < 0)
 			return false;
 	} else {
-		if (asprintf(&details, "%s:[%s:%u]", proto_name, src_buf,
+		if (asprintf(&details, "%s:[%s%s%s:%u]",
+			     proto_name, ob, src_buf, cb,
 			     ntohs(diag_msg->id.idiag_sport)) < 0)
 			return false;
 	}
@@ -244,6 +252,13 @@ receive_responses(struct tcb *tcp, const int fd, const unsigned long inode,
 static bool
 unix_send_query(struct tcb *tcp, const int fd, const unsigned long inode)
 {
+	/*
+	 * The kernel bug was fixed in mainline by commit v4.5-rc6~35^2~11
+	 * and backported to stable/linux-4.4.y by commit v4.4.4~297.
+	 */
+	const uint16_t dump_flag =
+		os_release < KERNEL_VERSION(4, 4, 4) ? NLM_F_DUMP : 0;
+
 	struct {
 		const struct nlmsghdr nlh;
 		const struct unix_diag_req udr;
@@ -251,13 +266,14 @@ unix_send_query(struct tcb *tcp, const int fd, const unsigned long inode)
 		.nlh = {
 			.nlmsg_len = sizeof(req),
 			.nlmsg_type = SOCK_DIAG_BY_FAMILY,
-			.nlmsg_flags = NLM_F_DUMP | NLM_F_REQUEST
+			.nlmsg_flags = NLM_F_REQUEST | dump_flag
 		},
 		.udr = {
 			.sdiag_family = AF_UNIX,
 			.udiag_ino = inode,
 			.udiag_states = -1,
-			.udiag_show = UDIAG_SHOW_NAME | UDIAG_SHOW_PEER
+			.udiag_show = UDIAG_SHOW_NAME | UDIAG_SHOW_PEER,
+			.udiag_cookie = { ~0U, ~0U }
 		}
 	};
 	return send_query(tcp, fd, &req, sizeof(req));
@@ -311,7 +327,7 @@ unix_parse_response(const void *data, const int data_len,
 
 	char peer_str[3 + sizeof(peer) * 3];
 	if (peer)
-		snprintf(peer_str, sizeof(peer_str), "->%u", peer);
+		xsprintf(peer_str, "->%u", peer);
 	else
 		peer_str[0] = '\0';
 
@@ -323,10 +339,10 @@ unix_parse_response(const void *data, const int data_len,
 		if (path[0] == '\0') {
 			outstr[1] = '@';
 			string_quote(path + 1, outstr + 2,
-				     path_len - 1, QUOTE_0_TERMINATED);
+				     path_len - 1, QUOTE_0_TERMINATED, NULL);
 		} else {
 			string_quote(path, outstr + 1,
-				     path_len, QUOTE_0_TERMINATED);
+				     path_len, QUOTE_0_TERMINATED, NULL);
 		}
 		path_str = outstr;
 	} else {
@@ -355,8 +371,7 @@ netlink_send_query(struct tcb *tcp, const int fd, const unsigned long inode)
 		},
 		.ndr = {
 			.sdiag_family = AF_NETLINK,
-			.sdiag_protocol = NDIAG_PROTO_ALL,
-			.ndiag_show = NDIAG_SHOW_MEMINFO
+			.sdiag_protocol = NDIAG_PROTO_ALL
 		}
 	};
 	return send_query(tcp, fd, &req, sizeof(req));
@@ -646,7 +661,7 @@ out:
 #else /* !HAVE_LINUX_GENETLINK_H */
 
 const struct xlat *
-genl_families_xlat(void)
+genl_families_xlat(struct tcb *tcp)
 {
 	return NULL;
 }

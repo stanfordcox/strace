@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2016 Fabien Siron <fabien.siron@epita.fr>
  * Copyright (c) 2017 JingPiao Chen <chenjingpiao@gmail.com>
- * Copyright (c) 2016-2017 The strace developers.
+ * Copyright (c) 2016-2018 The strace developers.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -58,6 +58,21 @@ decode_nla_rt_class(struct tcb *const tcp,
 		return false;
 	if (!umove_or_printaddr(tcp, addr, &num))
 		printxval(routing_table_ids, num, NULL);
+	return true;
+}
+
+bool
+decode_nla_rt_proto(struct tcb *const tcp,
+		    const kernel_ulong_t addr,
+		    const unsigned int len,
+		    const void *const opaque_data)
+{
+	uint8_t num;
+
+	if (len < sizeof(num))
+		return false;
+	if (!umove_or_printaddr(tcp, addr, &num))
+		printxval_search(routing_protocols, num, "RTPROT_???");
 	return true;
 }
 
@@ -233,7 +248,10 @@ static const nla_decoder_t rtmsg_nla_decoders[] = {
 	[RTA_EXPIRES]		= decode_nla_u64,
 	[RTA_PAD]		= NULL,
 	[RTA_UID]		= decode_nla_u32,
-	[RTA_TTL_PROPAGATE]	= decode_nla_u8
+	[RTA_TTL_PROPAGATE]	= decode_nla_u8,
+	[RTA_IP_PROTO]		= decode_nla_u8,
+	[RTA_SPORT]		= decode_nla_u16,
+	[RTA_DPORT]		= decode_nla_u16
 };
 
 static bool
@@ -255,8 +273,7 @@ decode_rta_multipath(struct tcb *const tcp,
 		PRINT_FIELD_IFINDEX(", ", nh, rtnh_ifindex);
 		tprints("}");
 
-		const unsigned short rtnh_len =
-			len < nh.rtnh_len ? len : nh.rtnh_len;
+		const unsigned short rtnh_len = MIN(len, nh.rtnh_len);
 		const size_t offset = RTNH_ALIGN(sizeof(nh));
 		if (rtnh_len > offset) {
 			tprints(", ");
@@ -283,7 +300,7 @@ DECL_NETLINK_ROUTE_DECODER(decode_rtmsg)
 	if (len >= sizeof(rtmsg)) {
 		if (!umoven_or_printaddr(tcp, addr + offset,
 					 sizeof(rtmsg) - offset,
-					 (void *) &rtmsg + offset)) {
+					 (char *) &rtmsg + offset)) {
 			PRINT_FIELD_U("", rtmsg, rtm_dst_len);
 			PRINT_FIELD_U(", ", rtmsg, rtm_src_len);
 			PRINT_FIELD_FLAGS(", ", rtmsg, rtm_tos,

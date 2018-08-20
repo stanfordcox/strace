@@ -14,6 +14,7 @@
 /ChangeLog
 /aclocal.m4
 /autom4te.cache
+/bpf_attr_check.c
 /compile
 /config.guess
 /config.h
@@ -23,6 +24,7 @@
 /config.sub
 /configure
 /depcomp
+/gnu
 /install-sh
 /ioctl_iocdef.[ih]
 /ioctl_redefs[12].h
@@ -32,6 +34,7 @@
 /libmpers-m32.a
 /libmpers-mx32.a
 /libstrace.a
+/linux/linux
 /m32_funcs.h
 /m32_printer_decls.h
 /m32_printer_defs.h
@@ -50,6 +53,7 @@
 /native_printer_decls.h
 /native_printer_defs.h
 /printers.h
+/README
 /scno.h
 /sen.h
 /stamp-h1

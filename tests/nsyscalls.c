@@ -2,7 +2,7 @@
  * Check decoding of out-of-range syscalls.
  *
  * Copyright (c) 2015-2016 Dmitry V. Levin <ldv@altlinux.org>
- * Copyright (c) 2016-2017 The strace developers.
+ * Copyright (c) 2016-2018 The strace developers.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -76,8 +76,8 @@ test_syscall(const unsigned long nr)
 			  a[0], a[1], a[2], a[3], a[4], a[5]);
 
 #if DEBUG_PRINT
-	fprintf(debug_out, "%s: pid %d invalid syscall %ld\n",
-		strace_name, getpid(), nr);
+	fprintf(debug_out, "%s: pid %d invalid syscall %#lx\n",
+		strace_name, getpid(), nr | SYSCALL_BIT);
 #endif
 
 #ifdef LINUX_MIPSO32
@@ -85,15 +85,15 @@ test_syscall(const unsigned long nr)
 	       " = %ld ENOSYS (%m)\n", nr | SYSCALL_BIT,
 	       a[0], a[1], a[2], a[3], a[4], a[5], rc);
 #else
-	printf("syscall_%lu(%#llx, %#llx, %#llx, %#llx, %#llx, %#llx)"
-	       " = %ld (errno %d)\n", nr,
+	printf("syscall_%#lx(%#llx, %#llx, %#llx, %#llx, %#llx, %#llx)"
+	       " = %ld ENOSYS (%m)\n", nr | SYSCALL_BIT,
 	       (unsigned long long) a[0],
 	       (unsigned long long) a[1],
 	       (unsigned long long) a[2],
 	       (unsigned long long) a[3],
 	       (unsigned long long) a[4],
 	       (unsigned long long) a[5],
-	       rc, errno);
+	       rc);
 #endif
 }
 

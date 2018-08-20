@@ -5,7 +5,7 @@
  * Copyright (c) 2016 Masatake Yamato <yamato@redhat.com>
  * Copyright (c) 2016 Dmitry V. Levin <ldv@altlinux.org>
  * Copyright (c) 2016 Eugene Syromyatnikov <evgsyr@gmail.com>
- * Copyright (c) 2016-2017 The strace developers.
+ * Copyright (c) 2016-2018 The strace developers.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -91,7 +91,7 @@ dm_decode_values(struct tcb *tcp, const unsigned int code,
 		case DM_DEV_SUSPEND:
 			if (ioc->flags & DM_SUSPEND_FLAG)
 				break;
-			/* Fall through */
+			ATTRIBUTE_FALLTHROUGH;
 		case DM_DEV_RENAME:
 		case DM_DEV_REMOVE:
 		case DM_DEV_WAIT:
@@ -237,7 +237,7 @@ dm_decode_dm_target_deps(struct tcb *const tcp, const kernel_ulong_t addr,
 
 	tprints(", deps=");
 	print_array(tcp, addr + offset_end, s.count, &dev_buf, sizeof(dev_buf),
-		    umoven_or_printaddr, dm_print_dev, NULL);
+		    tfetch_mem, dm_print_dev, NULL);
 
 	tprints("}");
 
@@ -258,6 +258,7 @@ dm_decode_dm_name_list(struct tcb *const tcp, const kernel_ulong_t addr,
 	uint32_t offset = ioc->data_start;
 	uint32_t offset_end = 0;
 	uint32_t count;
+	int rc;
 
 	if (ioc->data_start == ioc->data_size)
 		return;
@@ -288,8 +289,36 @@ dm_decode_dm_name_list(struct tcb *const tcp, const kernel_ulong_t addr,
 
 		PRINT_FIELD_DEV("{", s, dev);
 		tprints(", name=");
-		printstr_ex(tcp, addr + offset_end, ioc->data_size - offset_end,
-			    QUOTE_0_TERMINATED);
+		rc = printstr_ex(tcp, addr + offset_end,
+				 ioc->data_size - offset_end,
+				 QUOTE_0_TERMINATED);
+
+		/*
+		 * In Linux v4.13-rc1~137^2~13 it has been decided to cram in
+		 * one more undocumented field after the device name, as if the
+		 * format decoding was not twisted enough already. So, we have
+		 * to check "next" now, and if it _looks like_ that there is
+		 * a space for one additional integer, let's print it. As if the
+		 * perversity with "name string going further than pointer to
+		 * the next one" wasn't enough. Moreover, the calculation was
+		 * broken for m32 on 64-bit kernels until v4.14-rc4~20^2~3, and
+		 * we have no ability to detect kernel bit-ness (on x86, at
+		 * least), so refrain from printing it for the DM versions below
+		 * 4.37 (the original version was also aligned differently than
+		 * now even on 64 bit).
+		 */
+
+		if ((rc > 0) && ioc->version[1] >= 37) {
+			kernel_ulong_t event_addr =
+				(addr + offset_end + rc + 7) & ~7;
+			uint32_t event_nr;
+
+			if ((event_addr + sizeof(event_nr)) <=
+			    (addr + offset + s.next) &&
+			    !umove(tcp, event_addr, &event_nr))
+				tprintf(", event_nr=%" PRIu32, event_nr);
+		}
+
 		tprints("}");
 
 		if (!s.next)

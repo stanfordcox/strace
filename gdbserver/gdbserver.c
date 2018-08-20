@@ -43,11 +43,11 @@
 struct tcb *pid2tcb(int pid);
 struct tcb *alloctcb(int pid);
 void droptcb(struct tcb *tcp);
-void newoutf(struct tcb *tcp);
+void after_successful_attach(struct tcb *tcp, const unsigned int flags);
 void print_signalled(struct tcb *tcp, const int pid, int status);
 void print_exited(struct tcb *tcp, const int pid, int status);
 void print_stopped(struct tcb *tcp, const siginfo_t *si, const unsigned int sig);
-void set_sigaction(int signo, void (*sighandler)(int), struct sigaction *oldact);
+void set_sighandler(int signo, void (*sighandler)(int), struct sigaction *oldact);
 
 /* XXX Those are extern, are they really needed? */
 extern struct tcb *current_tcp;
@@ -523,9 +523,9 @@ gdb_find_thread(int tid, bool current)
 	struct tcb *tcp = pid2tcb(tid);
 	if (!tcp) {
 		tcp = alloctcb(tid);
-		tcp->flags |= TCB_GDB_CONT_PID_TID;
-		tcp->flags |= TCB_ATTACHED | TCB_STARTUP;
-		newoutf(tcp);
+//		tcp->flags |= TCB_GDB_CONT_PID_TID;
+//		tcp->flags |= TCB_ATTACHED | TCB_STARTUP;
+		after_successful_attach(tcp, TCB_GDB_CONT_PID_TID);
 
 		if (!current) {
 			char cmd[] = "Hgxxxxxxxx";
@@ -536,6 +536,8 @@ gdb_find_thread(int tid, bool current)
 				error_msg("couldn't set GDB server to thread "
 					  "%d", tid);
 		}
+		if (current)
+			gdb_init_syscalls();
 	}
 	return tcp;
 }
@@ -585,11 +587,11 @@ void
 gdb_end_init(void)
 {
 	/* TODO interface with -I? */
-	set_sigaction(SIGHUP, interrupt, NULL);
-	set_sigaction(SIGINT, interrupt, NULL);
-	set_sigaction(SIGQUIT, interrupt, NULL);
-	set_sigaction(SIGPIPE, interrupt, NULL);
-	set_sigaction(SIGTERM, interrupt, NULL);
+	set_sighandler(SIGHUP, interrupt, NULL);
+	set_sighandler(SIGINT, interrupt, NULL);
+	set_sighandler(SIGQUIT, interrupt, NULL);
+	set_sighandler(SIGPIPE, interrupt, NULL);
+	set_sighandler(SIGTERM, interrupt, NULL);
 
 	/* We enumerate all attached threads to be sure, especially
 	 * since we get all threads on vAttach, not just the one
@@ -606,6 +608,7 @@ gdb_end_init(void)
 void
 gdb_cleanup(void)
 {
+	ptrace_cleanup ();
 	if (gdb)
 		gdb_end(gdb);
 
@@ -678,8 +681,8 @@ gdb_startup_child(char **argv)
 
 	struct tcb *tcp = alloctcb(tid);
 
-	tcp->flags |= TCB_ATTACHED | TCB_STARTUP;
-	newoutf(tcp);
+//	tcp->flags |= TCB_ATTACHED | TCB_STARTUP;
+	after_successful_attach(tcp, 0);
 	gdb_init_syscalls();
 
 	if (gdb_nonstop)
@@ -793,8 +796,8 @@ gdb_attach_tcb(struct tcb *tcp)
 		droptcb(tcp);
 		tcp = alloctcb(tid);
 	}
-	tcp->flags |= TCB_ATTACHED | TCB_STARTUP;
-	newoutf(tcp);
+//	tcp->flags |= TCB_ATTACHED | TCB_STARTUP;
+	after_successful_attach(tcp,0);
 	gdb_init_syscalls();
 
 	if (!qflag)
@@ -807,8 +810,6 @@ gdb_detach(struct tcb *tcp)
 {
 	static bool already_detaching = false;
 
-	if (! already_detaching)
-		already_detaching = true;
 	if (already_detaching || gdb == NULL)
 		return;
 	if (gdb_multiprocess) {

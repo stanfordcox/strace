@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2016 Fabien Siron <fabien.siron@epita.fr>
  * Copyright (c) 2017 JingPiao Chen <chenjingpiao@gmail.com>
- * Copyright (c) 2017 The strace developers.
+ * Copyright (c) 2017-2018 The strace developers.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -51,9 +51,11 @@ DECL_NETLINK_DIAG_DECODER(decode_packet_diag_req)
 	if (len >= sizeof(req)) {
 		if (!umoven_or_printaddr(tcp, addr + offset,
 					 sizeof(req) - offset,
-					 (void *) &req + offset)) {
-			PRINT_FIELD_XVAL("", req, sdiag_protocol,
-					 ethernet_protocols, "ETH_P_???");
+					 (char *) &req + offset)) {
+			tprints("sdiag_protocol=");
+			printxval_searchn(ethernet_protocols,
+					  ethernet_protocols_size,
+					  req.sdiag_protocol, "ETH_P_???");
 			PRINT_FIELD_U(", ", req, pdiag_ino);
 			PRINT_FIELD_FLAGS(", ", req, pdiag_show,
 					  packet_diag_show, "PACKET_SHOW_???");
@@ -94,8 +96,7 @@ print_packet_diag_mclist(struct tcb *const tcp, void *const elem_buf,
 			 const size_t elem_size, void *const opaque_data)
 {
 	struct packet_diag_mclist *dml = elem_buf;
-	uint16_t alen = dml->pdmc_alen > sizeof(dml->pdmc_addr) ?
-		sizeof(dml->pdmc_addr) : dml->pdmc_alen;
+	uint16_t alen = MIN(dml->pdmc_alen, sizeof(dml->pdmc_addr));
 
 	PRINT_FIELD_IFINDEX("{", *dml, pdmc_index);
 	PRINT_FIELD_U(", ", *dml, pdmc_count);
@@ -120,7 +121,7 @@ decode_packet_diag_mclist(struct tcb *const tcp,
 		return false;
 
 	print_array(tcp, addr, nmemb, &dml, sizeof(dml),
-		    umoven_or_printaddr, print_packet_diag_mclist, 0);
+		    tfetch_mem, print_packet_diag_mclist, 0);
 
 	return true;
 }
@@ -187,7 +188,7 @@ DECL_NETLINK_DIAG_DECODER(decode_packet_diag_msg)
 	if (len >= sizeof(msg)) {
 		if (!umoven_or_printaddr(tcp, addr + offset,
 					 sizeof(msg) - offset,
-					 (void *) &msg + offset)) {
+					 (char *) &msg + offset)) {
 			PRINT_FIELD_XVAL("", msg, pdiag_type,
 					 socktypes, "SOCK_???");
 			PRINT_FIELD_U(", ", msg, pdiag_num);

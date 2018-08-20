@@ -1,6 +1,6 @@
 #!/bin/sh
 # Copyright (c) 2015 Dmitry V. Levin <ldv@altlinux.org>
-# Copyright (c) 2015-2017 The strace developers.
+# Copyright (c) 2015-2018 The strace developers.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -236,6 +236,9 @@ __EOF__
 #include <linux/fiemap.h>
 __EOF__
 			;;
+		*linux/ndctl.h)
+			echo '#define PAGE_SIZE 0'
+			;;
 		*linux/if_pppox.h)
 			echo '#include <netinet/in.h>'
 			;;
@@ -253,9 +256,12 @@ __EOF__
 			;;
 		*linux/kvm.h)
 			case "$uname_m" in
-				i?86|x86_64|arm*|ppc*|s390*) ;;
+				i?86|x86_64|aarch64|arm*|mips*|ppc*|s390*) ;;
 				*) return 0 ;; # not applicable
 			esac
+			;;
+		*linux/omap3isp.h)
+			echo 'struct omap3isp_stat_data_time32 {uint32_t dummy32[4]; uint16_t dummy16[3]; };'
 			;;
 		*linux/sonet.h)
 			echo '#include <linux/atmioc.h>'
@@ -372,7 +378,7 @@ s/^\([[:space:]]\+[^),]\+)\),$/\1/' >> "$tmpdir/$f"
 			;;
 		*media/v4l2-common.h)
 			# Fetch one piece of code containing ioctls definitions.
-			sed -n '/ remaining ioctls/,/ ---/p' < "$s" > "$tmpdir/$f"
+			sed -n '/\* s_config \*/,/ ---/p' < "$s" >> "$tmpdir/$f"
 			;;
 		openpromio.h|*/openpromio.h|fbio.h|*/fbio.h)
 			# Create the file it attempts to include.
@@ -390,13 +396,17 @@ s/^\([[:space:]]\+[^),]\+)\),$/\1/' >> "$tmpdir/$f"
 
 	# Soft post-preprocess workarounds.  Fragile.
 	case "$f" in
+		*linux/btrfs.h)
+			sed -i '/[[:space:]]BTRFS_IOC_[GS]ET_FSLABEL[[:space:]]/d' \
+				"$tmpdir"/header.out
+			;;
 		*linux/kvm.h)
 			arm_list='KVM_ARM_[A-Z_]+'
 			ppc_list='KVM_ALLOCATE_RMA|KVM_CREATE_SPAPR_TCE|KVM_CREATE_SPAPR_TCE_64|KVM_PPC_[A-Z1-9_]+'
 			s390_list='KVM_S390_[A-Z_]+'
-			x86_list='KVM_GET_CPUID2|KVM_GET_DEBUGREGS|KVM_GET_EMULATED_CPUID|KVM_GET_LAPIC|KVM_GET_MSRS|KVM_GET_MSR_INDEX_LIST|KVM_GET_PIT|KVM_GET_PIT2|KVM_GET_SUPPORTED_CPUID|KVM_GET_VCPU_EVENTS|KVM_GET_XCRS|KVM_GET_XSAVE|KVM_SET_CPUID|KVM_SET_CPUID2|KVM_SET_DEBUGREGS|KVM_SET_LAPIC|KVM_SET_MEMORY_ALIAS|KVM_SET_MSRS|KVM_SET_PIT|KVM_SET_PIT2|KVM_SET_VCPU_EVENTS|KVM_SET_XCRS|KVM_SET_XSAVE|KVM_XEN_HVM_CONFIG|KVM_X86_[A-Z_]+'
+			x86_list='KVM_GET_CPUID2|KVM_GET_DEBUGREGS|KVM_GET_EMULATED_CPUID|KVM_GET_LAPIC|KVM_GET_MSRS|KVM_GET_MSR_FEATURE_INDEX_LIST|KVM_GET_MSR_INDEX_LIST|KVM_GET_PIT|KVM_GET_PIT2|KVM_GET_SUPPORTED_CPUID|KVM_GET_VCPU_EVENTS|KVM_GET_XCRS|KVM_GET_XSAVE|KVM_HYPERV_EVENTFD|KVM_SET_CPUID|KVM_SET_CPUID2|KVM_SET_DEBUGREGS|KVM_SET_LAPIC|KVM_SET_MEMORY_ALIAS|KVM_SET_MSRS|KVM_SET_PIT|KVM_SET_PIT2|KVM_SET_VCPU_EVENTS|KVM_SET_XCRS|KVM_SET_XSAVE|KVM_XEN_HVM_CONFIG|KVM_X86_[A-Z_]+'
 			case "$uname_m" in
-				arm*) list="$ppc_list|$s390_list|$x86_list" ;;
+				aarch64|arm*) list="$ppc_list|$s390_list|$x86_list" ;;
 				ppc*) list="$arm_list|$s390_list|$x86_list" ;;
 				s390*) list="$arm_list|$ppc_list|$x86_list" ;;
 				i?86|x86_64*) list="$arm_list|$ppc_list|$s390_list" ;;

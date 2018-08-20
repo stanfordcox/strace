@@ -1,5 +1,6 @@
 #!/bin/sh -efu
 # Copyright (c) 2017 Dmitry V. Levin <ldv@altlinux.org>
+# Copyright (c) 2017-2018 The strace developers.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -48,7 +49,8 @@ git show "$id:NEWS" > "$tmpf"
 marker='^Noteworthy changes in release \([^ ]\+\) ([^)]\+)$'
 vers="$(sed -n "s/$marker/\\1/p;q" "$tmpf")"
 
-msg="NEWS for strace version $vers"
+msg_date=`LC_TIME=C date -u '+%Y-%m-%d'`
+msg="Noteworthy changes in strace $vers ($msg_date)"
 sep="$(echo "$msg" |sed s/./=/g)"
 echo "$msg"
 echo "$sep"
@@ -65,4 +67,10 @@ changes or bug reports.  These include:
 
 __EOF__
 
-"$(dirname "$0")"/gen-contributors-list.sh
+"$(dirname "$0")"/gen-contributors-list.sh |
+	sed 's/^./* &/'
+
+cat <<'__EOF__'
+
+Please refer to the CREDITS file for the full list of strace contributors.
+__EOF__
