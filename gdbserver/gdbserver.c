@@ -1,6 +1,6 @@
  /* Implementation of strace features over the GDB remote protocol.
  *
- * Copyright (c) 2015, 2016 Red Hat Inc.
+ * Copyright (c) 2015, 2016, 2018 Red Hat Inc.
  * Copyright (c) 2015 Josh Stone <cuviper@gmail.com>
  * All rights reserved.
  *
@@ -39,7 +39,6 @@
 #include "signals.h"
 #include "ptrace_backend.h"
 
-/* FIXME jistone: export hacks */
 struct tcb *pid2tcb(int pid);
 struct tcb *alloctcb(int pid);
 void droptcb(struct tcb *tcp);
@@ -48,21 +47,28 @@ void print_signalled(struct tcb *tcp, const int pid, int status);
 void print_exited(struct tcb *tcp, const int pid, int status);
 void print_stopped(struct tcb *tcp, const siginfo_t *si, const unsigned int sig);
 void set_sighandler(int signo, void (*sighandler)(int), struct sigaction *oldact);
+void set_sigaction(int signo, void (*sighandler)(int), struct sigaction *oldact);
+bool gdb_restart_process(struct tcb *current_tcp, unsigned int restart_sig, void *data);
 
-/* XXX Those are extern, are they really needed? */
+
+/* TODO Alternative to extern? */
 extern struct tcb *current_tcp;
-extern int strace_child;
-extern int detach_on_execve;
+extern int strace_child; /* referenced by print_signalled, print_exited */
+extern int detach_on_execve; /* set in init */
 
+static gdb_nprocs = 0;
 static volatile int interrupted;
+static int have_exit_group = 0;
+static const char process_needle[] = ";process:";
 char *gdbserver = NULL;
-/* XXX Move pid/tid to gdb_conn? */
+
+/* TODO Move pid/tid to gdb_conn? */
 static int general_pid; /* process id that gdbserver is focused on */
 static int general_tid; /* thread id that gdbserver is focused on */
-/* XXX stop is needed only to next_event */
+/* TODO stop is needed only to next_event */
 static struct gdb_stop_reply stop;
 static struct gdb_conn* gdb = NULL;
-/* XXX Move/merge this to/with gdb_conn */
+/* TODO Move/merge this to/with gdb_conn */
 static bool gdb_extended = false;
 static bool gdb_multiprocess = false;
 static bool gdb_vcont = false;
@@ -249,7 +255,6 @@ gdb_recv_signal(struct gdb_stop_reply *stop)
 static void
 gdb_recv_exit(struct gdb_stop_reply *stop)
 {
-	static const char process_needle[] = ";process:";
 	char *reply = stop->reply;
 
 	stop->type = reply[0] == 'W' ?
@@ -263,7 +268,7 @@ gdb_recv_exit(struct gdb_stop_reply *stop)
 					       sizeof(process_needle) - 1);
 
 		/* we don't really know the tid, so just use PID for now */
-		/* XXX should exits enumerate all threads we know of a process? */
+		/* TODO should exits enumerate all threads we know of a process? */
 		stop->tid = stop->pid;
 	}
 }
@@ -359,16 +364,6 @@ gdb_ok(void)
 }
 
 
-bool
-gdb_prog_pid_check (char *exec_name, int nprocs)
-{
-	/* under gdbserver, we can reasonably allow having neither to use existing targets.  */
-	if (!exec_name && !nprocs && !gdbserver)
-		return false;
-	return true;
-}
-
-
 struct gdb_trace_loop_data {
 	siginfo_t *si;
 	unsigned int restart_op;
@@ -388,20 +383,19 @@ gdb_start_init(int argc, char *argv[])
 	if (gdbserver[0] == '|')
 		gdb = gdb_begin_command(gdbserver + 1);
 	else if (strchr(gdbserver, ':') && !strchr(gdbserver, '/')) {
-		/* XXX I suggest changing ";" to ":" as it matches in-option
-		 *     sub-option separation in other options, such as
-		 *     -e inject, and allows avoiding quoting in some cases
+		/* An optional fragment "#nonstop" can be given to use
+		 * nonstop protocol
 		 */
-		if (strchr(gdbserver, ';')) {
+		if (strchr(gdbserver, '#')) {
 			const char *stop_option;
-			gdbserver = strtok(gdbserver, ";");
+			gdbserver = strtok(gdbserver, ":");
 			stop_option = strtok(NULL, "");
 			stop_option += strspn(" ", stop_option);
 			if (!strcmp(stop_option, "non-stop"))
 				gdb_nonstop = true;
 		}
 		const char *node = strtok(gdbserver, ":");
-		const char *service = strtok(NULL, "");
+		const char *service = strtok(NULL, ":");
 		gdb = gdb_begin_tcp(node, service);
 	} else
 		gdb = gdb_begin_path(gdbserver);
@@ -426,13 +420,12 @@ gdb_start_init(int argc, char *argv[])
 	if (!gdb_multiprocess)
 		error_msg("couldn't enable GDB server multiprocess mode");
 	if (followfork) {
-		/* XXX This will match on vfork-events+, needs better parsing */
-		gdb_fork = strstr(reply, "fork-events+") != NULL;
-		if (!gdb_fork)
-			error_msg("couldn't enable GDB server fork events handling");
 		gdb_fork = strstr(reply, "vfork-events+") != NULL;
 		if (!gdb_fork)
 			error_msg("couldn't enable GDB server vfork events handling");
+		gdb_fork = strstr(reply, "fork-events+") != NULL;
+		if (!gdb_fork)
+			error_msg("couldn't enable GDB server fork events handling");
 	}
 	if (!detach_on_execve) {
 		if (!strstr(reply, "exec-events+"))
@@ -452,10 +445,7 @@ gdb_start_init(int argc, char *argv[])
 	if (!gdb_ok())
 		error_msg("couldn't enable GDB server signal passing");
 
-	/* XXX this looks strange. Why 0x97 - isn't it GDB_SIGNAL_LAST?
-	 *     It's probably better to generate that list programmatically.
-	 *     Also, it's not entirely obvious what signals are excluded and
-	 *     why - additional points for programmatical generation. */
+	/* TODO generate this list programmatically. */
 
 	static const char program_signals[] =
 		"QProgramSignals:0;1;3;4;6;7;8;9;a;b;c;d;e;f;10;11;12;"
@@ -522,13 +512,14 @@ gdb_find_thread(int tid, bool current)
 	/* Look up 'tid' in our table. */
 	struct tcb *tcp = pid2tcb(tid);
 	if (!tcp) {
+		gdb_nprocs += 1;
 		tcp = alloctcb(tid);
 //		tcp->flags |= TCB_GDB_CONT_PID_TID;
 //		tcp->flags |= TCB_ATTACHED | TCB_STARTUP;
 		after_successful_attach(tcp, TCB_GDB_CONT_PID_TID);
 
 		if (!current) {
-			char cmd[] = "Hgxxxxxxxx";
+			char cmd[] = "Hgxxxxxxxxxxx";
 			snprintf(cmd, sizeof(cmd), "Hg%x", tid);
 			gdb_send_str(gdb, cmd);
 			current = gdb_ok();
@@ -679,6 +670,7 @@ gdb_startup_child(char **argv)
 
 	strace_child = tid;
 
+	gdb_nprocs += 1;
 	struct tcb *tcp = alloctcb(tid);
 
 //	tcp->flags |= TCB_ATTACHED | TCB_STARTUP;
@@ -708,15 +700,12 @@ gdb_attach_tcb(struct tcb *tcp)
 
 	struct gdb_stop_reply stop;
 	char vattach_cmd[] = "vAttach;XXXXXXXX";
+	snprintf(vattach_cmd, sizeof(vattach_cmd), "vAttach;%x", tcp->pid);
 
 	gdb_send_cstr(gdb, "QNonStop:1");
-	if (gdb_ok())
-		gdb_set_non_stop(gdb, true);
-
-	snprintf(vattach_cmd, sizeof(vattach_cmd), "vAttach;%x", tcp->pid);
-	gdb_send_str(gdb, vattach_cmd);
-
-	do {
+	if (!gdb_ok())
+		stop.type = GDB_STOP_UNKNOWN;
+	else do {
 		/*
 		 * non-stop packet order:
 		 * client sends: vCont;t
@@ -727,27 +716,19 @@ gdb_attach_tcb(struct tcb *tcp)
 		 *   client sends: vStopped ]
 		 * server sends: OK
 		 */
-		char h_cmd[] = "Hgxxxxxxxx";
-		char vcont_cmd[] = "vCont;t:pXXXXXXXX";
-
+		gdb_set_non_stop(gdb, true);
+		gdb_send_str(gdb, vattach_cmd);
 		if (!gdb_ok()) {
 			stop.type = GDB_STOP_UNKNOWN;
 			break;
 		}
 
-		snprintf(h_cmd, sizeof(h_cmd), "Hg%x.-1", tcp->pid);
-		gdb_send_str(gdb, h_cmd);
-
-		if (!gdb_ok()) {
-			stop.type = GDB_STOP_UNKNOWN;
-			break;
-		}
-
+		char vcont_cmd[] = "vCont;t:pXXXXXXXXXXX";
 		snprintf(vcont_cmd, sizeof(vcont_cmd),
 			 "vCont;t:p%x.-1", tcp->pid);
 		gdb_send_str(gdb, vcont_cmd);
 		stop = gdb_recv_stop(NULL);
-	} while (0);
+		} while (0);
 
 	if (stop.type == GDB_STOP_UNKNOWN) {
 		gdb_send_cstr(gdb, "QNonStop:0");
@@ -773,13 +754,13 @@ gdb_attach_tcb(struct tcb *tcp)
 					  "GDB server failed vAttach with %.*s",
 					  tcp->pid, (int) stop.size,
 					  stop.reply);
-			/* XXX fall through? */
+			break;
 		case GDB_STOP_TRAP:
 			break;
 		case GDB_STOP_SIGNAL:
 			if (stop.code == 0)
 				break;
-			/* fallthrough */
+			__attribute__ ((fallthrough));
 		default:
 			error_msg_and_die("Cannot connect to process %d: "
 					  "GDB server expected vAttach trap, "
@@ -794,6 +775,7 @@ gdb_attach_tcb(struct tcb *tcp)
 
 	if (tid != tcp->pid) {
 		droptcb(tcp);
+		gdb_nprocs += 1;
 		tcp = alloctcb(tid);
 	}
 //	tcp->flags |= TCB_ATTACHED | TCB_STARTUP;
@@ -813,7 +795,7 @@ gdb_detach(struct tcb *tcp)
 	if (already_detaching || gdb == NULL)
 		return;
 	if (gdb_multiprocess) {
-		char cmd[] = "D;XXXXXXXX";
+		char cmd[] = "D;XXXXXXXXXXX";
 		snprintf(cmd, sizeof(cmd), "D;%x", tcp->pid);
 		gdb_send_str(gdb, cmd);
 	} else {
@@ -822,7 +804,7 @@ gdb_detach(struct tcb *tcp)
 
 	if (!gdb_ok()) {
 		/* is it still alive? */
-		char cmd[] = "T;XXXXXXXX";
+		char cmd[] = "T;XXXXXXXXXXX";
 		snprintf(cmd, sizeof(cmd), "T;%x", tcp->pid);
 		gdb_send_str(gdb, cmd);
 		if (gdb_ok())
@@ -833,6 +815,10 @@ gdb_detach(struct tcb *tcp)
 	if (!qflag && (tcp->flags & TCB_ATTACHED))
 		error_msg("Process %u detached", tcp->pid);
 
+	if (! already_detaching)
+		already_detaching = true;
+
+	gdb_nprocs -= 1;
 	droptcb(tcp);
 }
 
@@ -845,14 +831,28 @@ gdb_next_event(int *pstatus, void *si_p)
 	struct tcb *tcp = NULL;
 	siginfo_t *si __attribute__ ((unused)) = (siginfo_t*)si_p;
 
-	if (interrupted)
+	// we keep our own nprocs count: when thread/proc is created, when "W" packet
+	// is received for fork or process terminate, when exit packet is received for
+	// thread terminate.  (we do not always see a syscall_return:exit packet)
+	if (interrupted || (gdb_nprocs == 1 && have_exit_group > 0)) {
 		return TE_BREAK;
+	}
 
 	stop.reply = pop_notification(&stop.size);
+	if (stop.type == GDB_STOP_EXITED)
+		// If we previously exited then we need to continue before waiting for a stop
+		gdb_restart_process (current_tcp, 0, NULL);
+
 	if (stop.reply)	    /* cached out of order notification? */
 		stop = gdb_recv_stop(&stop);
 	else
 		stop = gdb_recv_stop(NULL);
+
+	if (have_exit_group && stop.reply && stop.reply[0] == 'W' && strstr(stop.reply, process_needle) != NULL)
+	{
+		gdb_nprocs -= 1;
+		have_exit_group += 1;
+	}
 	if (stop.size == 0)
 		error_msg_and_die("GDB server gave an empty stop reply!?");
 
@@ -891,12 +891,6 @@ gdb_next_event(int *pstatus, void *si_p)
 		return false;
 
 	tid = tcp->pid;
-	if (! (tcp->flags & TCB_GDB_CONT_PID_TID)) {
-		char cmd[] = "Hgxxxxxxxx";
-
-		snprintf(cmd, sizeof(cmd), "Hg%x.%x", general_pid, general_tid);
-		debug_func_msg("%s", cmd);
-	}
 
 	/* TODO need code equivalent to PTRACE_EVENT_EXEC? */
 
@@ -929,10 +923,16 @@ gdb_next_event(int *pstatus, void *si_p)
 		tcp->scno = stop.code;
 		gdb_sig = stop.code;
 		*pstatus = gdb_signal_to_target(tcp, gdb_sig);
-		if (stop.code == __NR_exit_group)
+		if (stop.code == __NR_exit) {
+			gdb_nprocs -= 1;
+		}
+		if (stop.code == __NR_exit_group) {
+			have_exit_group += 1;
 			return TE_GROUP_STOP;
+		}
 		else
 			return TE_SYSCALL_STOP;
+		break;
 
 	case GDB_STOP_SYSCALL_RETURN:
 		/* If we missed the entry, recording a return will
@@ -942,7 +942,10 @@ gdb_next_event(int *pstatus, void *si_p)
 			tcp->scno = stop.code;
 			gdb_sig = stop.code;
 			*pstatus = gdb_signal_to_target(tcp, gdb_sig);
-			return TE_SYSCALL_STOP;
+			if (stop.code == __NR_exit_group)
+				return TE_GROUP_STOP;
+			else
+				return TE_SYSCALL_STOP;
 		}
 		break;
 
@@ -954,7 +957,7 @@ gdb_next_event(int *pstatus, void *si_p)
 		if (siginfo_reply && siginfo_size == sizeof(siginfo_t))
 			si = (siginfo_t *) siginfo_reply;
 
-		/* XXX gdbserver returns "native" siginfo of 32/64-bit
+		/* TODO gdbserver returns "native" siginfo of 32/64-bit
 		 * target but strace expects its own format as
 		 * PTRACE_GETSIGINFO would have given it.  (i.e. need
 		 * to reverse siginfo_fixup)
@@ -971,7 +974,7 @@ gdb_next_event(int *pstatus, void *si_p)
 		break;
 	}
 
-	return TE_NEXT;
+	return TE_RESTART;
 }
 
 /*
@@ -979,7 +982,8 @@ gdb_next_event(int *pstatus, void *si_p)
  * connection should be ready for a stop reply on entry,p and we'll
  * leave it the same way if we return true.
  */
-bool
+ __attribute__ ((unused)) // Replaced by strace.c::dispatch_event
+ bool
 gdb_dispatch_event(enum trace_event ret, int *pstatus, void *si_p)
 {
 	siginfo_t *si = (siginfo_t*)si_p;
@@ -994,7 +998,7 @@ gdb_dispatch_event(enum trace_event ret, int *pstatus, void *si_p)
 
 	tid = tcp->pid;
 	if (! (tcp->flags & TCB_GDB_CONT_PID_TID)) {
-		char cmd[] = "Hgxxxxxxxx";
+		char cmd[] = "Hgxxxxxxxxxxx";
 
 		snprintf(cmd, sizeof(cmd), "Hg%x.%x", general_pid, general_tid);
 		debug_func_msg("%s", cmd);
@@ -1038,7 +1042,6 @@ gdb_dispatch_event(enum trace_event ret, int *pstatus, void *si_p)
 
 	case TE_EXITED:
 		print_exited(tcp, tid, *pstatus);
-		droptcb(tcp);
 		/* Don't continue if the process exited */
 		if (!gdb_multiprocess || gdb_has_non_stop(gdb))
 			return false;
@@ -1070,7 +1073,7 @@ gdb_dispatch_event(enum trace_event ret, int *pstatus, void *si_p)
 	if (stop.code) {
 		if (gdb_vcont) {
 			/* send the signal to this target and continue everyone else */
-			char cmd[] = "vCont;Cxx:xxxxxxxx;c";
+			char cmd[] = "vCont;Cxx:xxxxxxxxxxx;c";
 
 			snprintf(cmd, sizeof(cmd),
 				 "vCont;C%02x:%x;c", gdb_sig, tid);
@@ -1283,7 +1286,7 @@ bool
 gdb_verify_args(const char *username, bool daemon, unsigned int *follow_fork)
 {
 	if (username) {
-		/* XXX We can run local gdb stub under a different user */
+		/* TODO We can run local gdb stub under a different user */
 		error_msg_and_die("-u and -G are mutually exclusive");
 	}
 
@@ -1292,7 +1295,7 @@ gdb_verify_args(const char *username, bool daemon, unsigned int *follow_fork)
 	}
 
 	if (!*follow_fork) {
-		/* XXX it more affects the behaviour on the discovery of the new
+		/* TODO it more affects the behaviour on the discovery of the new
 		 *     process, so we can support no-follow-fork by detaching
 		 *     new childs as we already doing now with unexpected ones.
 		 */
@@ -1314,7 +1317,9 @@ gdb_verify_args(const char *username, bool daemon, unsigned int *follow_fork)
 bool
 gdb_handle_arg(char arg, char *optarg)
 {
-	if (arg != 'G')
+	if (arg == 'f')
+		return true;
+	else if (arg != 'G')
 		return false;
 
 	gdbserver = optarg;
@@ -1326,11 +1331,9 @@ bool
 gdb_restart_process(struct tcb *current_tcp, unsigned int restart_sig,
 		       void *data)
 {
+	// gdb_restart_process <- restart_process <- dispatch_event (next_event) <- main
 	int gdb_sig = 0 /*stop.code*/;
-	pid_t tid = current_tcp->pid;
-
-	if (current_tcp->scno == __NR_exit_group)
-		return false;
+	pid_t tid = current_tcp ? current_tcp->pid : 0;
 
 	if (have_notification())
 		return true;
@@ -1338,7 +1341,7 @@ gdb_restart_process(struct tcb *current_tcp, unsigned int restart_sig,
 	if (gdb_sig) {
 		if (gdb_vcont) {
 			/* send the signal to this target and continue everyone else */
-			char cmd[] = "vCont;Cxx:xxxxxxxx;c";
+			char cmd[] = "vCont;Cxx:xxxxxxxxxxx;c";
 
 			snprintf(cmd, sizeof(cmd),
 				 "vCont;C%02x:%x;c", gdb_sig, tid);
@@ -1359,9 +1362,8 @@ gdb_restart_process(struct tcb *current_tcp, unsigned int restart_sig,
 			struct tcb *general_tcp =
 				gdb_find_thread(general_tid, true);
 
-			if (gdb_has_non_stop(gdb) &&
-			    general_pid != general_tid &&
-			    general_tcp->flags & TCB_GDB_CONT_PID_TID)
+			if (gdb_has_non_stop(gdb) && general_pid != general_tid
+				&& general_tcp->flags & TCB_GDB_CONT_PID_TID)
 				snprintf(cmd, sizeof(cmd), "vCont;c:p%x.%x",
 					 general_pid, general_tid);
 			else

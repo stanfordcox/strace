@@ -268,7 +268,6 @@ struct tcb {
 #define TCB_TAMPERED	0x40	/* A syscall has been tampered with */
 #define TCB_HIDE_LOG	0x80	/* We should hide everything (until execve) */
 #define TCB_SKIP_DETACH_ON_FIRST_EXEC	0x100	/* -b execve should skip detach on first execve */
-#define TCB_GDB_CONT_PID_TID 0x400 /* Use vCont;c:pPID.TID for for gdb backend */
 #define TCB_GRABBED	0x200	/* We grab the process and can catch it
 				 * in the middle of a syscall */
 #define TCB_RECOVERING	0x400	/* We try to recover after detecting incorrect
@@ -278,6 +277,7 @@ struct tcb {
 #define TCB_DELAYED	0x1000	/* Current syscall has been delayed */
 #define TCB_TAMPERED_NO_FAIL 0x2000	/* We tamper tcb with syscall
 					   that should not fail. */
+#define TCB_GDB_CONT_PID_TID 0x4000 /* Use vCont;c:pPID.TID for gdb backend */
 
 /* qualifier flags */
 #define QUAL_TRACE	0x001	/* this system call should be traced */

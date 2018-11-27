@@ -329,7 +329,7 @@ send_packet(FILE *out, const char *command, size_t size)
 	fflush(out);
 
 	if (ferror(out)) {
-		error_msg("Error sending message \"$%s\" to GDB server",
+		error_msg_and_die("Error sending message \"$%s\" to GDB server",
 			  command);
 	} else if (feof(out)) {
 		error_msg_and_die("Connection to GDB server has been closed");
@@ -564,14 +564,16 @@ recv_packet(FILE *in, size_t *ret_size, bool* ret_sum_ok)
 	}
 
 	if (ferror(in)) {
-		error_msg_and_die("got stream error while receiving GDB server "
+		error_msg("got stream error while receiving GDB server "
 				  "packet");
 	} else if (feof(in)) {
-		error_msg_and_die("connection closed unexpectedly while "
+		error_msg("connection closed unexpectedly while "
 				  "receiving GDB server packet");
+	} else {
+		error_msg("unknown GDB server connection error");
 	}
-
-	error_msg_and_die("unknown GDB server connection error");
+	// error_msg_and_die may result in endless loop doing cleanup
+	_exit(1);
 }
 
 char *
