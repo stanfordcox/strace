@@ -39,7 +39,7 @@ extern void ptrace_detach(struct tcb *tcp);
 extern void ptrace_cleanup(void);
 
 extern void *ptrace_alloc_trace_loop_storage(void);
-extern enum trace_event ptrace_next_event(int *pstatus, void *data);
+extern struct tcb_wait_data *ptrace_next_event(void);
 extern void ptrace_handle_group_stop(unsigned int *restart_sig, void *data);
 extern void ptrace_handle_exec(struct tcb **current_tcp, void *data);
 extern void *ptrace_get_siginfo(void *data);
@@ -50,8 +50,8 @@ extern void ptrace_clear_regs(struct tcb *tcp);
 extern long ptrace_get_regs(struct tcb * const tcp);
 extern int ptrace_get_scno(struct tcb *tcp);
 extern int ptrace_set_scno(struct tcb *tcp, kernel_ulong_t scno);
-extern int ptrace_set_error(struct tcb *tcp);
-extern int ptrace_set_success(struct tcb *tcp);
+extern int ptrace_set_error(struct tcb *tcp, unsigned long new_error);
+extern int ptrace_set_success(struct tcb *tcp, kernel_long_t new_rval);
 extern int ptrace_get_syscall_result(struct tcb *tcp);
 
 extern int ptrace_umoven(struct tcb *const tcp, kernel_ulong_t addr,

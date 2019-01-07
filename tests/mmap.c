@@ -77,15 +77,14 @@ main(int ac, char **av)
 		perror_msg_and_fail("mmap");
 #if XLAT_RAW
 	printf("%s(%p, %lu, %#x, "
-	       "%#x|%#x, %d, %#jx) = %p\n",
-	       name, addr, length1, PROT_READ | PROT_WRITE, MAP_PRIVATE,
-	       MAP_ANONYMOUS, fd, uoffset, p);
+	       "%#x, %d, %#jx) = %p\n",
+	       name, addr, length1, PROT_READ | PROT_WRITE,
+	       MAP_PRIVATE | MAP_ANONYMOUS, fd, uoffset, p);
 #elif XLAT_VERBOSE
 	printf("%s(%p, %lu, %#x /* PROT_READ|PROT_WRITE */, "
-	       "%#x /* MAP_PRIVATE */|%#x /* MAP_ANONYMOUS */, %d, %#jx) "
-	       "= %p\n",
-	       name, addr, length1, PROT_READ | PROT_WRITE, MAP_PRIVATE,
-	       MAP_ANONYMOUS, fd, uoffset, p);
+	       "%#x /* MAP_PRIVATE|MAP_ANONYMOUS */, %d, %#jx) = %p\n",
+	       name, addr, length1, PROT_READ | PROT_WRITE,
+	       MAP_PRIVATE | MAP_ANONYMOUS, fd, uoffset, p);
 #else
 	printf("%s(%p, %lu, PROT_READ|PROT_WRITE, "
 	       "MAP_PRIVATE|MAP_ANONYMOUS, %d, %#jx) = %p\n",
@@ -140,15 +139,15 @@ main(int ac, char **av)
 		perror_msg_and_fail("munmap");
 	printf("munmap(%p, %lu) = 0\n", p, length3);
 
-	if (mlockall(MCL_FUTURE))
-		perror_msg_and_fail("mlockall");
+	printf("mlockall(");
 #if XLAT_RAW
-	printf("mlockall(%#x) = 0\n", MCL_FUTURE);
+	printf("%#x", MCL_FUTURE);
 #elif XLAT_VERBOSE
-	printf("mlockall(%#x /* MCL_FUTURE */) = 0\n", MCL_FUTURE);
+	printf("%#x /* MCL_FUTURE */", MCL_FUTURE);
 #else
-	puts("mlockall(MCL_FUTURE) = 0");
+	printf("MCL_FUTURE");
 #endif
+	printf(") = %s\n", sprintrc(mlockall(MCL_FUTURE)));
 
 	puts("+++ exited with 0 +++");
 	return 0;

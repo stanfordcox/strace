@@ -28,11 +28,12 @@
 
 #include "defs.h"
 #include "ptrace.h"
+#include "ptrace_pokeuser.c"
 
 int
 ptrace_upoke(struct tcb *tcp, unsigned long off, kernel_ulong_t val)
 {
-	if (ptrace(PTRACE_POKEUSER, tcp->pid, off, val)) {
+	if (ptrace_pokeuser(tcp->pid, off, val) < 0) {
 		if (errno != ESRCH)
 			perror_msg("upoke: PTRACE_POKEUSER pid:%d @%#lx)",
 				   tcp->pid, off);

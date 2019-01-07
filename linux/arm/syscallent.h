@@ -249,7 +249,8 @@
 [219] = { 3,	TM,		SEN(mincore),			"mincore"		},
 [220] = { 3,	TM,		SEN(madvise),			"madvise"		},
 [221] = { 3,	TD,		SEN(fcntl64),			"fcntl64"		},
-[222 ... 223] = { },
+/* [222] - tux */
+/* [223] - unused */
 [224] = { 0,	PU|NF,		SEN(gettid),			"gettid"		},
 [225] = { 5,	TD,		SEN(readahead),			"readahead"		},
 [226] = { 5,	TF,		SEN(setxattr),			"setxattr"		},
@@ -280,7 +281,8 @@
 [251] = { 4,	TD,		SEN(epoll_ctl),			"epoll_ctl"		},
 [252] = { 4,	TD,		SEN(epoll_wait),		"epoll_wait"		},
 [253] = { 5,	TM|SI,		SEN(remap_file_pages),		"remap_file_pages"	},
-[254 ... 255] = { },
+/* [254] - set_thread_area */
+/* [255] - get_thread_area */
 [256] = { 1,	0,		SEN(set_tid_address),		"set_tid_address"	},
 [257] = { 3,	0,		SEN(timer_create),		"timer_create"		},
 [258] = { 4,	0,		SEN(timer_settime),		"timer_settime"		},
@@ -424,11 +426,12 @@
 [396] = { 1,	0,		SEN(pkey_free),			"pkey_free"		},
 [397] = { 5,	TD|TF|TSTA,	SEN(statx),			"statx"			},
 [398] = { 4,	0,		SEN(rseq),			"rseq"			},
+[399] = { 6,	0,		SEN(io_pgetevents),		"io_pgetevents"		},
 
 #ifdef __ARM_EABI__
-# define ARM_FIRST_SHUFFLED_SYSCALL 400
+# define ARM_FIRST_SHUFFLED_SYSCALL 500
 #else
-# define SYS_socket_subcall	400
+# define SYS_socket_subcall	500
 # include "subcall.h"
 # define ARM_FIRST_SHUFFLED_SYSCALL (SYS_ipc_subcall + SYS_ipc_nsubcalls)
 #endif /* !__ARM_EABI__ */
@@ -437,6 +440,7 @@
  * __ARM_NR_cmpxchg (0x000ffff0).
  * Remapped by shuffle_scno() to be directly after ordinary syscalls
  * in this table.
+ * Removed in v4.4-rc1~163^2^3~13.
  */
 [ARM_FIRST_SHUFFLED_SYSCALL    ] = { 5,	0,	SEN(printargs),	"cmpxchg"		},
 

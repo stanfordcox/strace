@@ -63,8 +63,8 @@ print_loop_info(struct loop_info * const info, bool print_encrypt,
 #else
 	printf("{lo_number=%d", info->lo_number);
 # if VERBOSE
-	printf(", lo_device=makedev(%u, %u), lo_inode=%lu, "
-	       "lo_rdevice=makedev(%u, %u)",
+	printf(", lo_device=makedev(%#x, %#x), lo_inode=%lu, "
+	       "lo_rdevice=makedev(%#x, %#x)",
 	       major(info->lo_device), minor(info->lo_device),
 	       info->lo_inode,
 	       major(info->lo_rdevice), minor(info->lo_rdevice));
@@ -119,8 +119,8 @@ print_loop_info64(struct loop_info64 * const info64, bool print_encrypt,
 	printf("%p", info64);
 #else
 # if VERBOSE
-	printf("{lo_device=makedev(%u, %u), lo_inode=%" PRIu64
-	       ", lo_rdevice=makedev(%u, %u), lo_offset=%#" PRIx64
+	printf("{lo_device=makedev(%#x, %#x), lo_inode=%" PRIu64
+	       ", lo_rdevice=makedev(%#x, %#x), lo_offset=%#" PRIx64
 	       ", lo_sizelimit=%" PRIu64 ", lo_number=%" PRIu32,
 	       major(info64->lo_device), minor(info64->lo_device),
 	       (uint64_t) info64->lo_inode,
@@ -187,24 +187,26 @@ main(void)
 
 	/* Unknown loop commands */
 	sys_ioctl(-1, unknown_loop_cmd, magic);
-	printf("ioctl(-1, _IOC(_IOC_READ|_IOC_WRITE%s, 0x4c, %#x, %#x), "
+	printf("ioctl(-1, _IOC(%s_IOC_READ|_IOC_WRITE, 0x4c, %#x, %#x), "
 	       "%#lx) = -1 EBADF (%m)\n",
 	       _IOC_DIR((unsigned int) unknown_loop_cmd) & _IOC_NONE ?
-	       "|_IOC_NONE" : "",
+	       "_IOC_NONE|" : "",
 	       _IOC_NR((unsigned int) unknown_loop_cmd),
 	       _IOC_SIZE((unsigned int) unknown_loop_cmd),
 	       (unsigned long) magic);
 
 	sys_ioctl(-1, LOOP_SET_BLOCK_SIZE + 1, magic);
-	printf("ioctl(-1, _IOC(0, 0x4c, %#x, %#x), %#lx) = "
+	printf("ioctl(-1, _IOC(%s, 0x4c, %#x, %#x), %#lx) = "
 	       "-1 EBADF (%m)\n",
+	       _IOC_NONE ? "0" : "_IOC_NONE",
 	       _IOC_NR(LOOP_SET_BLOCK_SIZE + 1),
 	       _IOC_SIZE(LOOP_SET_BLOCK_SIZE + 1),
 	       (unsigned long) magic);
 
 	sys_ioctl(-1, LOOP_CTL_GET_FREE + 1, magic);
-	printf("ioctl(-1, _IOC(0, 0x4c, %#x, %#x), %#lx) = "
+	printf("ioctl(-1, _IOC(%s, 0x4c, %#x, %#x), %#lx) = "
 	       "-1 EBADF (%m)\n",
+	       _IOC_NONE ? "0" : "_IOC_NONE",
 	       _IOC_NR(LOOP_CTL_GET_FREE + 1),
 	       _IOC_SIZE(LOOP_CTL_GET_FREE + 1),
 	       (unsigned long) magic);

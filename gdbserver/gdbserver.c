@@ -56,7 +56,7 @@ extern struct tcb *current_tcp;
 extern int strace_child; /* referenced by print_signalled, print_exited */
 extern int detach_on_execve; /* set in init */
 
-static gdb_nprocs = 0;
+static int gdb_nprocs = 0;
 static volatile int interrupted;
 static int have_exit_group = 0;
 static const char process_needle[] = ";process:";
@@ -105,6 +105,14 @@ struct gdb_stop_reply {
 	int code; /* error, signal, exit status, scno */
 	int pid; /* process id, aka kernel tgid */
 	int tid; /* thread id, aka kernel tid */
+};
+
+/* TODO Same as strace.c */
+struct tcb_wait_data {
+	enum trace_event te; /**< Event passed to dispatch_event() */
+	int status;          /**< status, returned by wait4() */
+	siginfo_t si;        /**< siginfo, returned by PTRACE_GETSIGINFO */
+	unsigned int restart_op;
 };
 
 static int
@@ -363,17 +371,6 @@ gdb_ok(void)
 	return ok;
 }
 
-
-struct gdb_trace_loop_data {
-	siginfo_t *si;
-	unsigned int restart_op;
-};
-
-void *
-gdb_alloc_trace_loop_storage(void)
-{
-	return xmalloc(sizeof(struct gdb_trace_loop_data));
-}
 
 bool
 gdb_start_init(int argc, char *argv[])
@@ -823,19 +820,23 @@ gdb_detach(struct tcb *tcp)
 }
 
 
-enum trace_event
-gdb_next_event(int *pstatus, void *si_p)
+struct tcb_wait_data *
+gdb_next_event(void)
 {
+	static struct tcb_wait_data wait_data;
+	struct tcb_wait_data *wd = &wait_data;
 	int gdb_sig = 0;
 	pid_t tid;
 	struct tcb *tcp = NULL;
-	siginfo_t *si __attribute__ ((unused)) = (siginfo_t*)si_p;
+	siginfo_t *si __attribute__ ((unused)) = &wd->si;
 
+	// TODO wd->restart_op = PTRACE_SYSCALL;
 	// we keep our own nprocs count: when thread/proc is created, when "W" packet
 	// is received for fork or process terminate, when exit packet is received for
 	// thread terminate.  (we do not always see a syscall_return:exit packet)
 	if (interrupted || (gdb_nprocs == 1 && have_exit_group > 0)) {
-		return TE_BREAK;
+		wd->te = TE_BREAK;
+		return wd;
 	}
 
 	stop.reply = pop_notification(&stop.size);
@@ -848,6 +849,7 @@ gdb_next_event(int *pstatus, void *si_p)
 	else
 		stop = gdb_recv_stop(NULL);
 
+	/* TODO compare current_tcp.pid to stop.reply.pid? */
 	if (have_exit_group && stop.reply && stop.reply[0] == 'W' && strstr(stop.reply, process_needle) != NULL)
 	{
 		gdb_nprocs -= 1;
@@ -864,7 +866,8 @@ gdb_next_event(int *pstatus, void *si_p)
 	case GDB_STOP_ERROR:
 		/* vCont error -> no more processes */
 		free(stop.reply);
-		return TE_BREAK;
+		wd->te = TE_BREAK;
+		return wd;
 	default:
 		break;
 	}
@@ -888,7 +891,7 @@ gdb_next_event(int *pstatus, void *si_p)
 
 	/* Exit if the process has gone away */
 	if (tcp == 0)
-		return false;
+		return NULL;
 
 	tid = tcp->pid;
 
@@ -903,12 +906,14 @@ gdb_next_event(int *pstatus, void *si_p)
 
 	switch (stop.type) {
 	case GDB_STOP_EXITED:
-		*pstatus = W_EXITCODE(stop.code, 0);
-		return TE_EXITED;
+		wd->status = W_EXITCODE(stop.code, 0);
+		wd->te = TE_EXITED;
+		return wd;
 
 	case GDB_STOP_TERMINATED:
-		*pstatus = W_EXITCODE(0, gdb_signal_to_target(tcp, stop.code));
-		return TE_SIGNALLED;
+		wd->status = W_EXITCODE(0, gdb_signal_to_target(tcp, stop.code));
+		wd->te = TE_SIGNALLED;
+		return wd;
 
 	case GDB_STOP_UNKNOWN:	/* already handled above */
 	case GDB_STOP_ERROR:	/* already handled above */
@@ -922,16 +927,18 @@ gdb_next_event(int *pstatus, void *si_p)
 		tcp->flags &= ~TCB_INSYSCALL;
 		tcp->scno = stop.code;
 		gdb_sig = stop.code;
-		*pstatus = gdb_signal_to_target(tcp, gdb_sig);
+		wd->status = gdb_signal_to_target(tcp, gdb_sig);
 		if (stop.code == __NR_exit) {
 			gdb_nprocs -= 1;
 		}
 		if (stop.code == __NR_exit_group) {
 			have_exit_group += 1;
-			return TE_GROUP_STOP;
+			wd->te = TE_GROUP_STOP;
+			return wd;
+		} else {
+			wd->te = TE_SYSCALL_STOP;
+			return wd;
 		}
-		else
-			return TE_SYSCALL_STOP;
 		break;
 
 	case GDB_STOP_SYSCALL_RETURN:
@@ -941,11 +948,14 @@ gdb_next_event(int *pstatus, void *si_p)
 		if (exiting(tcp)) {
 			tcp->scno = stop.code;
 			gdb_sig = stop.code;
-			*pstatus = gdb_signal_to_target(tcp, gdb_sig);
-			if (stop.code == __NR_exit_group)
-				return TE_GROUP_STOP;
-			else
-				return TE_SYSCALL_STOP;
+			wd->status = gdb_signal_to_target(tcp, gdb_sig);
+			if (stop.code == __NR_exit_group) {
+				wd->te = TE_GROUP_STOP;
+				return wd;
+			} else {
+				wd->te = TE_SYSCALL_STOP;
+				return wd;
+			}
 		}
 		break;
 
@@ -964,9 +974,10 @@ gdb_next_event(int *pstatus, void *si_p)
 		 * ((i.e. siginfo_from_compat_siginfo)) */
 
 		gdb_sig = stop.code;
-		*pstatus = gdb_signal_to_target(tcp, gdb_sig);
+		wd->status = gdb_signal_to_target(tcp, gdb_sig);
 		free(siginfo_reply);
-		return TE_SIGNAL_DELIVERY_STOP;
+		wd->te = TE_SIGNAL_DELIVERY_STOP;
+		return wd;
 	}
 
 	default:
@@ -974,7 +985,8 @@ gdb_next_event(int *pstatus, void *si_p)
 		break;
 	}
 
-	return TE_RESTART;
+	wd->te = TE_RESTART;
+	return wd;
 }
 
 /*
@@ -1381,7 +1393,6 @@ gdb_restart_process(struct tcb *current_tcp, unsigned int restart_sig,
 void
 gdb_handle_group_stop(unsigned int *restart_sig, void *data)
 {
-//	struct ptrace_trace_loop_data *trace_loop_data = data;
 }
 
 
@@ -1396,7 +1407,6 @@ const struct tracing_backend gdbserver_backend = {
 	.detach             = gdb_detach,
 	.cleanup            = gdb_cleanup,
 
-	.alloc_tls          = gdb_alloc_trace_loop_storage,
 	.next_event         = gdb_next_event,
 	.handle_exec        = (0),
 	.handle_group_stop  = gdb_handle_group_stop,

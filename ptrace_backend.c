@@ -113,7 +113,6 @@ const struct tracing_backend ptrace_backend = {
 	.detach             = ptrace_detach,
 	.cleanup            = ptrace_cleanup,
 
-	.alloc_tls          = ptrace_alloc_trace_loop_storage,
 	.next_event         = ptrace_next_event,
 	.handle_exec        = ptrace_handle_exec,
 	.handle_group_stop  = ptrace_handle_group_stop,

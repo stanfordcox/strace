@@ -144,6 +144,8 @@ ioctl_dm
 ioctl_dm-v
 ioctl_evdev
 ioctl_evdev-v
+ioctl_evdev-success
+ioctl_evdev-success-v
 ioctl_inotify
 ioctl_kvm_run
 ioctl_kvm_run-v
@@ -152,10 +154,12 @@ ioctl_loop
 ioctl_loop-nv
 ioctl_loop-v
 ioctl_mtd
+ioctl_nbd
 ioctl_nsfs
 ioctl_perf
 ioctl_perf-success
 ioctl_ptp
+ioctl_random
 ioctl_rtc
 ioctl_rtc-v
 ioctl_scsi
@@ -214,6 +218,9 @@ madvise
 mbind
 membarrier
 memfd_create
+memfd_create-Xabbrev
+memfd_create-Xraw
+memfd_create-Xverbose
 migrate_pages
 mincore
 mkdir
@@ -411,6 +418,9 @@ recvmmsg-timeout
 recvmsg
 redirect-fds
 remap_file_pages
+remap_file_pages-Xabbrev
+remap_file_pages-Xraw
+remap_file_pages-Xverbose
 rename
 renameat
 renameat2
@@ -550,6 +560,9 @@ userfaultfd
 ustat
 utime
 utimensat
+utimensat-Xabbrev
+utimensat-Xraw
+utimensat-Xverbose
 utimes
 vfork-f
 vhangup

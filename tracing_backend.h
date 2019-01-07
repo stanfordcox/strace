@@ -66,10 +66,8 @@ struct tracing_backend {
 	 * Group of functions related to the main tracing loop.
 	 */
 
-	/* Allocate storage for the tracing loop */
-	void * (*alloc_tls) (void);
 	/* Return new event */
-	enum trace_event (*next_event) (int *pstatus, void *data);
+	struct tcb_wait_data * (*next_event) (void);
 	/* Additional handling for TE_STOP_BEFORE_EXECVE */
 	void (*handle_exec) (struct tcb **current_tcp, void *data);
 	/* Additional handling for TE_GROUP_STOP */
@@ -87,9 +85,9 @@ struct tracing_backend {
 	int (*get_scno) (struct tcb *tcp);
 	int (*set_scno) (struct tcb *tcp, kernel_ulong_t scno);
 	/* Set tracee's error code in accordance with tcb's data */
-	int (*set_error) (struct tcb *tcp);
+	int (*set_error) (struct tcb *tcp, unsigned long);
 	/* Set tracee's return code in accordance with tcb's data */
-	int (*set_success) (struct tcb *tcp);
+	int (*set_success) (struct tcb *tcp, kernel_long_t);
 	int (*get_syscall_result) (struct tcb *tcp);
 
 	int (*umoven) (struct tcb *const tcp, kernel_ulong_t addr,
@@ -207,19 +205,10 @@ cleanup(void)
 		cur_tracing_backend->cleanup();
 }
 
-static inline void *
-alloc_trace_loop_storage(void)
+static inline const struct tcb_wait_data *
+next_event(void)
 {
-	if (cur_tracing_backend->alloc_tls)
-		return cur_tracing_backend->alloc_tls();
-	else
-		return NULL;
-}
-
-static inline enum trace_event
-next_event(int *pstatus, void *data)
-{
-	return cur_tracing_backend->next_event(pstatus, data);
+	return cur_tracing_backend->next_event();
 }
 
 static inline void
@@ -276,16 +265,16 @@ set_scno(struct tcb *tcp, kernel_ulong_t scno)
 	return cur_tracing_backend->set_scno(tcp, scno);
 }
 
-static inline int
-set_error(struct tcb *tcp)
+static inline void
+set_error(struct tcb *tcp, unsigned long new_error)
 {
-	return cur_tracing_backend->set_error(tcp);
+	cur_tracing_backend->set_error(tcp, new_error);
 }
 
 static inline int
-set_success(struct tcb *tcp)
+set_success(struct tcb *tcp, kernel_long_t new_rval)
 {
-	return cur_tracing_backend->set_success(tcp);
+	return cur_tracing_backend->set_success(tcp, new_rval);
 }
 
 static inline int
@@ -401,7 +390,6 @@ tracee_recvmsg(struct tcb *tcp, int fd, struct msghdr *msg, int flags)
 # define attach_tcb                  ptrace_attach_tcb
 # define detach                      ptrace_detach
 # define cleanup                     ptrace_cleanup
-# define alloc_trace_loop_storage    ptrace_alloc_trace_loop_storage
 # define next_event                  ptrace_next_event
 # define handle_group_stop           ptrace_handle_group_stop
 # define handle_exec                 ptrace_handle_exec

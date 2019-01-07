@@ -267,15 +267,16 @@ struct tcb {
 #define TCB_FILTERED	0x20	/* This system call has been filtered out */
 #define TCB_TAMPERED	0x40	/* A syscall has been tampered with */
 #define TCB_HIDE_LOG	0x80	/* We should hide everything (until execve) */
-#define TCB_SKIP_DETACH_ON_FIRST_EXEC	0x100	/* -b execve should skip detach on first execve */
-#define TCB_GRABBED	0x200	/* We grab the process and can catch it
+#define TCB_CHECK_EXEC_SYSCALL	0x100	/* Check whether this execve syscall succeeded */
+#define TCB_SKIP_DETACH_ON_FIRST_EXEC	0x200	/* -b execve should skip detach on first execve */
+#define TCB_GRABBED	0x400	/* We grab the process and can catch it
 				 * in the middle of a syscall */
-#define TCB_RECOVERING	0x400	/* We try to recover after detecting incorrect
+#define TCB_RECOVERING	0x800	/* We try to recover after detecting incorrect
 				 * syscall entering/exiting state */
-#define TCB_INJECT_DELAY_EXIT	0x800	/* Current syscall needs to be delayed
+#define TCB_INJECT_DELAY_EXIT	0x1000	/* Current syscall needs to be delayed
 					   on exit */
-#define TCB_DELAYED	0x1000	/* Current syscall has been delayed */
-#define TCB_TAMPERED_NO_FAIL 0x2000	/* We tamper tcb with syscall
+#define TCB_DELAYED	0x2000	/* Current syscall has been delayed */
+#define TCB_TAMPERED_NO_FAIL 0x4000	/* We tamper tcb with syscall
 					   that should not fail. */
 #define TCB_GDB_CONT_PID_TID 0x4000 /* Use vCont;c:pPID.TID for gdb backend */
 
@@ -298,6 +299,7 @@ struct tcb {
 #define inject(tcp)	((tcp)->qual_flg & QUAL_INJECT)
 #define filtered(tcp)	((tcp)->flags & TCB_FILTERED)
 #define hide_log(tcp)	((tcp)->flags & TCB_HIDE_LOG)
+#define check_exec_syscall(tcp)	((tcp)->flags & TCB_CHECK_EXEC_SYSCALL)
 #define syscall_tampered(tcp)	((tcp)->flags & TCB_TAMPERED)
 #define recovering(tcp)	((tcp)->flags & TCB_RECOVERING)
 #define inject_delay_exit(tcp)	((tcp)->flags & TCB_INJECT_DELAY_EXIT)
@@ -333,6 +335,7 @@ extern const struct xlat evdev_abs[];
 /** Number of elements in evdev_abs array without the terminating record. */
 extern const size_t evdev_abs_size;
 
+extern const struct xlat evdev_ev[];
 extern const struct xlat iffflags[];
 extern const struct xlat ip_type_of_services[];
 extern const struct xlat ipc_private[];
@@ -381,11 +384,24 @@ enum sock_proto {
 	SOCK_PROTO_UNIX,
 	SOCK_PROTO_TCP,
 	SOCK_PROTO_UDP,
+	SOCK_PROTO_UDPLITE,
+	SOCK_PROTO_DCCP,
+	SOCK_PROTO_SCTP,
+	SOCK_PROTO_L2TP_IP,
+	SOCK_PROTO_PING,
+	SOCK_PROTO_RAW,
 	SOCK_PROTO_TCPv6,
 	SOCK_PROTO_UDPv6,
-	SOCK_PROTO_NETLINK
+	SOCK_PROTO_UDPLITEv6,
+	SOCK_PROTO_DCCPv6,
+	SOCK_PROTO_L2TP_IPv6,
+	SOCK_PROTO_SCTPv6,
+	SOCK_PROTO_PINGv6,
+	SOCK_PROTO_RAWv6,
+	SOCK_PROTO_NETLINK,
 };
 extern enum sock_proto get_proto_by_name(const char *);
+extern int get_family_by_proto(enum sock_proto proto);
 
 enum iov_decode {
 	IOV_DECODE_ADDR,
@@ -428,7 +444,10 @@ extern int read_int_from_file(struct tcb *, const char *, int *);
 
 extern void set_sortby(const char *);
 extern void set_overhead(int);
-extern void print_pc(struct tcb *);
+
+extern bool get_instruction_pointer(struct tcb *, kernel_ulong_t *);
+extern bool get_stack_pointer(struct tcb *, kernel_ulong_t *);
+extern void print_instruction_pointer(struct tcb *);
 
 extern struct iovec* arch_iovec_for_getregset(void);
 
@@ -720,9 +739,9 @@ printxval_searchn(const struct xlat *xlat, size_t xlat_size, uint64_t val,
  */
 #define printxval_search(xlat__, val__, dflt__) \
 	printxval_searchn(xlat__, ARRAY_SIZE(xlat__) - 1, val__, dflt__)
-#define printxval_search_ex(xlat__, val__, dflt__) \
+#define printxval_search_ex(xlat__, val__, dflt__, style__) \
 	printxval_searchn_ex((xlat__), ARRAY_SIZE(xlat__) - 1, (val__), \
-			     (dflt__), XLAT_STYLE_DEFAULT)
+			     (dflt__), (style__))
 
 extern int printxval_indexn_ex(const struct xlat *, size_t xlat_size,
 			       uint64_t val, const char *dflt, enum xlat_style);
@@ -761,6 +780,30 @@ printxval_dispatch(const struct xlat *xlat, size_t xlat_size, uint64_t val,
 	return printxval_dispatch_ex(xlat, xlat_size, val, dflt, xt,
 				     XLAT_STYLE_DEFAULT);
 }
+
+enum xlat_style_private_flag_bits {
+	/* print_array */
+	PAF_PRINT_INDICES_BIT = XLAT_STYLE_SPEC_BITS + 1,
+	PAF_INDEX_XLAT_SORTED_BIT,
+	PAF_INDEX_XLAT_VALUE_INDEXED_BIT,
+
+	/* print_xlat */
+	PXF_DEFAULT_STR_BIT,
+};
+
+#define FLAG_(name_) name_ = 1 << name_##_BIT
+
+enum xlat_style_private_flags {
+	/* print_array */
+	FLAG_(PAF_PRINT_INDICES),
+	FLAG_(PAF_INDEX_XLAT_SORTED),
+	FLAG_(PAF_INDEX_XLAT_VALUE_INDEXED),
+
+	/* print_xlat */
+	FLAG_(PXF_DEFAULT_STR),
+};
+
+#undef FLAG_
 
 /** Print a value in accordance with xlat formatting settings. */
 extern void print_xlat_ex(uint64_t val, const char *str, enum xlat_style style);
@@ -813,21 +856,6 @@ typedef bool (*tfetch_mem_fn)(struct tcb *, kernel_ulong_t addr,
 typedef bool (*print_fn)(struct tcb *, void *elem_buf,
 			 size_t elem_size, void *opaque_data);
 
-enum print_array_flag_bits {
-	PAF_PRINT_INDICES_BIT = XLAT_STYLE_SPEC_BITS + 1,
-	PAF_INDEX_XLAT_SORTED_BIT,
-	PAF_INDEX_XLAT_VALUE_INDEXED_BIT,
-};
-
-#define FLAG_(name_) name_ = 1 << name_##_BIT
-
-enum print_array_flags {
-	FLAG_(PAF_PRINT_INDICES),
-	FLAG_(PAF_INDEX_XLAT_SORTED),
-	FLAG_(PAF_INDEX_XLAT_VALUE_INDEXED),
-};
-
-#undef FLAG_
 
 /**
  * @param flags Combination of xlat style settings and additional flags from
@@ -896,6 +924,8 @@ print_inet_addr(int af, const void *addr, unsigned int len, const char *var_name
 extern bool
 decode_inet_addr(struct tcb *, kernel_ulong_t addr,
 		 unsigned int len, int family, const char *var_name);
+extern void print_ax25_addr(const void /* ax25_address */ *addr);
+extern void print_x25_addr(const void /* struct x25_address */ *addr);
 extern const char *get_sockaddr_by_inode(struct tcb *, int fd, unsigned long inode);
 extern bool print_sockaddr_by_inode(struct tcb *, int fd, unsigned long inode);
 extern void print_dirfd(struct tcb *, int);
@@ -954,6 +984,7 @@ fetch_perf_event_attr(struct tcb *const tcp, const kernel_ulong_t addr);
 extern void
 print_perf_event_attr(struct tcb *const tcp, const kernel_ulong_t addr);
 
+extern const char *get_ifname(const unsigned int ifindex);
 extern void print_ifindex(unsigned int);
 
 extern unsigned int next_set_qual_scno(const unsigned int scno,
@@ -974,8 +1005,10 @@ DECL_IOCTL(file);
 DECL_IOCTL(fs_x);
 DECL_IOCTL(inotify);
 DECL_IOCTL(kvm);
+DECL_IOCTL(nbd);
 DECL_IOCTL(nsfs);
 DECL_IOCTL(ptp);
+DECL_IOCTL(random);
 DECL_IOCTL(scsi);
 DECL_IOCTL(term);
 DECL_IOCTL(ubi);
