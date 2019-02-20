@@ -41,7 +41,7 @@ EOF
 input="${0%/*}/gen_tests.in"
 [ $# -eq 0 ] || { input="$1"; shift; }
 output=
-[ $# -eq 0 ] || { output="$1"; shift; }
+[ $# -eq 0 ] || { output="$1"; outputgdb=$(basename "$1" .gen.test)-gdb.gen.test; shift; }
 [ $# -eq 0 ] || usage
 
 if [ -n "$output" ]; then
@@ -60,6 +60,7 @@ while read -r name arg0 args; do {
 	if [ -z "$match" ]; then
 		names="$names $name"
 		output="$dir/$name.gen.test"
+		outputgdb="$dir/$name-gdb.gen.test"
 	else
 		[ "$match" = "$name" ] || continue
 	fi
@@ -93,6 +94,26 @@ while read -r name arg0 args; do {
 		EOF
 		;;
 	esac > "$output"
+	
+	set +u
+	if [ -z "$arg0" ] ; then
+		names="$names $name-gdb"
+		cat <<-EOF  > "$outputgdb"
+		$hdr
+		. "\${srcdir=.}/init.sh"
+		run_strace_gdbserver_match_diff $arg0 $args
+		EOF
+		chmod a+x "$outputgdb"
+	elif [[ "$arg0" =~ '-' ]] ; then
+		names="$names $name-gdb"
+		cat <<-EOF  > "$outputgdb"
+		$hdr
+		. "\${srcdir=.}/init.sh"
+		run_strace_gdbserver_match_diff $arg0 $args
+		EOF
+		chmod a+x "$outputgdb"
+	fi
+	set -u
 
 	chmod a+x "$output"
 } < /dev/null; done < "$input"

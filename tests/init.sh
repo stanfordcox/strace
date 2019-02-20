@@ -53,7 +53,7 @@ dump_log_and_fail_with()
 run_prog()
 {
 	if [ $# -eq 0 ]; then
-		set -- "../$NAME"
+		set -- "../${NAME%%-gdb}"
 	fi
 	args="$*"
 	"$@" || {
@@ -92,6 +92,21 @@ run_strace()
 	> "$LOG" || fail_ "failed to write $LOG"
 	args="$*"
 	$STRACE -o "$LOG" "$@" ||
+		dump_log_and_fail_with "$STRACE $args failed with code $?"
+}
+
+run_strace_gdbserver()
+{
+	> "$LOG" || fail_ "failed to write $LOG"
+	args="$*"
+	gdbserver --once --multi :65432 &
+	# give gdbserver an opportunity to come up
+	sleep 1
+	if [ $? -gt 0 ] ; then
+	    framework_skip_ "Unable to start gdbserver"
+	fi
+	args="$args (gdbserver)"
+	$STRACE -o "$LOG" -G localhost:65432 "$@" ||
 		dump_log_and_fail_with "$STRACE $args failed with code $?"
 }
 
@@ -230,6 +245,23 @@ run_strace_match_diff()
 	match_diff "$LOG" "$EXP"
 }
 
+run_strace_gdbserver_match_diff()
+{
+        if [ $NAME = siginfo-gdb ] ; then
+	    fail_ "Expected failure"
+	    return
+	fi
+	args="$*"
+	[ -n "$args" -a -z "${args##*-e trace=*}" ] ||
+		set -- -e trace="${NAME%%-gdb}" "$@"
+	run_prog > /dev/null
+	run_strace_gdbserver "$@" $args > "$EXP"
+	# strace gdbserver has implicit -f so remove pid prefix
+	sed -i 's/^[0-9][0-9]* *//' "$LOG"
+	args="$args (gdbserver)"
+	match_diff "$LOG" "$EXP"
+}
+
 # Usage: run_strace_match_grep [args to run_strace]
 run_strace_match_grep()
 {
@@ -343,6 +375,7 @@ test_trace_expr()
 	test_pure_prog_set --expfile /dev/null -qq -esignal=none "$@" \
 		< negative.list
 }
+
 
 check_prog cat
 check_prog rm

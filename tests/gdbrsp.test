@@ -67,7 +67,7 @@ gdbserver --once --multi :65432 &
 if [ $? -gt 0 ] ; then
 	framework_skip_ "Unable to start gdbserver"
 fi
-$STRACE -G 'localhost:65432:non-stop' $(readlink -f ../gdbrsp) >& $LOG
+timeout -s KILL 30s $STRACE -G 'localhost:65432:non-stop' $(readlink -f ../gdbrsp) >& $LOG
 
 EXPECTED="$LOG.expected"
 cat > "$EXPECTED" << __EOF__

@@ -56,9 +56,8 @@ extern struct tcb *current_tcp;
 extern int strace_child; /* referenced by print_signalled, print_exited */
 extern int detach_on_execve; /* set in init */
 
-static int gdb_nprocs = 0;
 static volatile int interrupted;
-static int have_exit_group = 0;
+static pid_t gdb_group_pid;
 static const char process_needle[] = ";process:";
 char *gdbserver = NULL;
 
@@ -380,19 +379,22 @@ gdb_start_init(int argc, char *argv[])
 	if (gdbserver[0] == '|')
 		gdb = gdb_begin_command(gdbserver + 1);
 	else if (strchr(gdbserver, ':') && !strchr(gdbserver, '/')) {
-		/* An optional fragment "#nonstop" can be given to use
+		/* An optional fragment ":nonstop" can be given to use
 		 * nonstop protocol
 		 */
-		if (strchr(gdbserver, '#')) {
+		if (0 && strchr(gdbserver, ':')) {
 			const char *stop_option;
 			gdbserver = strtok(gdbserver, ":");
-			stop_option = strtok(NULL, "");
+			stop_option = strtok(NULL, ":");
 			stop_option += strspn(" ", stop_option);
 			if (!strcmp(stop_option, "non-stop"))
 				gdb_nonstop = true;
 		}
 		const char *node = strtok(gdbserver, ":");
 		const char *service = strtok(NULL, ":");
+		const char *stop_option = strtok(NULL, ":");
+		if (stop_option && !strcmp (stop_option, "non-stop"))
+			gdb_nonstop = true;
 		gdb = gdb_begin_tcp(node, service);
 	} else
 		gdb = gdb_begin_path(gdbserver);
@@ -509,10 +511,7 @@ gdb_find_thread(int tid, bool current)
 	/* Look up 'tid' in our table. */
 	struct tcb *tcp = pid2tcb(tid);
 	if (!tcp) {
-		gdb_nprocs += 1;
 		tcp = alloctcb(tid);
-//		tcp->flags |= TCB_GDB_CONT_PID_TID;
-//		tcp->flags |= TCB_ATTACHED | TCB_STARTUP;
 		after_successful_attach(tcp, TCB_GDB_CONT_PID_TID);
 
 		if (!current) {
@@ -585,6 +584,7 @@ gdb_end_init(void)
 	 * since we get all threads on vAttach, not just the one
 	 * pid. */
 	gdb_enumerate_threads();
+	gdb_group_pid = current_tcp->pid;
 
 	/* Everything was stopped from startup_child/startup_attach,
 	 * now continue them all so the next reply will be a stop
@@ -667,7 +667,6 @@ gdb_startup_child(char **argv)
 
 	strace_child = tid;
 
-	gdb_nprocs += 1;
 	struct tcb *tcp = alloctcb(tid);
 
 //	tcp->flags |= TCB_ATTACHED | TCB_STARTUP;
@@ -772,7 +771,6 @@ gdb_attach_tcb(struct tcb *tcp)
 
 	if (tid != tcp->pid) {
 		droptcb(tcp);
-		gdb_nprocs += 1;
 		tcp = alloctcb(tid);
 	}
 //	tcp->flags |= TCB_ATTACHED | TCB_STARTUP;
@@ -815,7 +813,6 @@ gdb_detach(struct tcb *tcp)
 	if (! already_detaching)
 		already_detaching = true;
 
-	gdb_nprocs -= 1;
 	droptcb(tcp);
 }
 
@@ -830,11 +827,20 @@ gdb_next_event(void)
 	struct tcb *tcp = NULL;
 	siginfo_t *si __attribute__ ((unused)) = &wd->si;
 
-	// TODO wd->restart_op = PTRACE_SYSCALL;
-	// we keep our own nprocs count: when thread/proc is created, when "W" packet
-	// is received for fork or process terminate, when exit packet is received for
-	// thread terminate.  (we do not always see a syscall_return:exit packet)
-	if (interrupted || (gdb_nprocs == 1 && have_exit_group > 0)) {
+	// Do we have a process exit reply whose pid matches the original pid?
+	if (stop.reply && stop.reply[0] == 'W')
+	{
+		const char *process = strstr(stop.reply, process_needle);
+		if (process) {
+			pid_t pidt = gdb_decode_hex_str(process +
+						       sizeof(process_needle) - 1);
+			if (pidt == gdb_group_pid) {
+				wd->te = TE_BREAK;
+				return wd;
+			}
+		}
+	}
+	if (interrupted) {
 		wd->te = TE_BREAK;
 		return wd;
 	}
@@ -849,12 +855,6 @@ gdb_next_event(void)
 	else
 		stop = gdb_recv_stop(NULL);
 
-	/* TODO compare current_tcp.pid to stop.reply.pid? */
-	if (have_exit_group && stop.reply && stop.reply[0] == 'W' && strstr(stop.reply, process_needle) != NULL)
-	{
-		gdb_nprocs -= 1;
-		have_exit_group += 1;
-	}
 	if (stop.size == 0)
 		error_msg_and_die("GDB server gave an empty stop reply!?");
 
@@ -928,11 +928,7 @@ gdb_next_event(void)
 		tcp->scno = stop.code;
 		gdb_sig = stop.code;
 		wd->status = gdb_signal_to_target(tcp, gdb_sig);
-		if (stop.code == __NR_exit) {
-			gdb_nprocs -= 1;
-		}
 		if (stop.code == __NR_exit_group) {
-			have_exit_group += 1;
 			wd->te = TE_GROUP_STOP;
 			return wd;
 		} else {
@@ -1172,6 +1168,13 @@ gdb_set_scno(struct tcb *tcp, kernel_ulong_t scno)
 	return -1;
 }
 
+void *
+gdb_get_siginfo(void *data)
+{
+	struct tcb_wait_data *wd = data;
+
+	return &wd->si;
+}
 
 int
 gdb_read_mem(pid_t tid, long addr, unsigned int len, bool check_nil, char *out)
@@ -1410,7 +1413,7 @@ const struct tracing_backend gdbserver_backend = {
 	.next_event         = gdb_next_event,
 	.handle_exec        = (0),
 	.handle_group_stop  = gdb_handle_group_stop,
-	.get_siginfo        = (0),
+	.get_siginfo        = gdb_get_siginfo,
 	.restart_process    = gdb_restart_process,
 
 	.clear_regs         = (0),
