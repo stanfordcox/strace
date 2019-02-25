@@ -825,7 +825,7 @@ gdb_next_event(void)
 	int gdb_sig = 0;
 	pid_t tid;
 	struct tcb *tcp = NULL;
-	siginfo_t *si __attribute__ ((unused)) = &wd->si;
+	siginfo_t *si = &wd->si;
 
 	// Do we have a process exit reply whose pid matches the original pid?
 	if (stop.reply && stop.reply[0] == 'W')
@@ -961,7 +961,7 @@ gdb_next_event(void)
 		char *siginfo_reply =
 				gdb_xfer_read(gdb, "siginfo", "", &siginfo_size);
 		if (siginfo_reply && siginfo_size == sizeof(siginfo_t))
-			si = (siginfo_t *) siginfo_reply;
+			*si = *((siginfo_t *) siginfo_reply);
 
 		/* TODO gdbserver returns "native" siginfo of 32/64-bit
 		 * target but strace expects its own format as
@@ -969,8 +969,8 @@ gdb_next_event(void)
 		 * to reverse siginfo_fixup)
 		 * ((i.e. siginfo_from_compat_siginfo)) */
 
-		gdb_sig = stop.code;
-		wd->status = gdb_signal_to_target(tcp, gdb_sig);
+		gdb_sig = si->si_signo;
+		wd->status = W_EXITCODE (gdb_signal_to_target(tcp, gdb_sig), 0);
 		free(siginfo_reply);
 		wd->te = TE_SIGNAL_DELIVERY_STOP;
 		return wd;
