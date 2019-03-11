@@ -93,6 +93,9 @@ enum gdb_stop {
 	GDB_STOP_TRAP, /* missing or unrecognized stop reason */
 	GDB_STOP_SYSCALL_ENTRY,
 	GDB_STOP_SYSCALL_RETURN,
+	GDB_STOP_FORK,
+	GDB_STOP_VFORK,
+	GDB_STOP_VFORKDONE,
 };
 
 
@@ -252,7 +255,25 @@ gdb_recv_signal(struct gdb_stop_reply *stop)
 				stop->type = GDB_STOP_SYSCALL_RETURN;
 				stop->code = gdb_decode_hex_str(r);
 			}
-		}
+		} else if (!strcmp(n, "fork")) {
+			if (stop->type == GDB_STOP_TRAP) {
+				stop->type = GDB_STOP_FORK;
+				strtok(r, ".");
+				stop->code = gdb_decode_hex_str(strtok(NULL, ""));
+			}
+		} else if (!strcmp(n, "vfork")) {
+			if (stop->type == GDB_STOP_TRAP) {
+				stop->type = GDB_STOP_VFORK;
+				stop->code = gdb_decode_hex_str(r);
+			}
+		} else if (!strcmp(n, "vforkdone")) {
+			if (stop->type == GDB_STOP_TRAP) {
+				stop->type = GDB_STOP_VFORKDONE;
+				stop->code = gdb_decode_hex_str(r);
+			}
+		} else if (!strcmp(n, "exec")) {
+			}
+
 		/* TODO exec, fork, vfork, vforkdone */
 	}
 
@@ -924,7 +945,7 @@ gdb_next_event(void)
 		 * missed a return? -- skipping this report doesn't do
 		 * much good.  Might as well force it to be a new
 		 * entry regardless to sync up. */
-		tcp->flags &= ~TCB_INSYSCALL;
+//		tcp->flags &= ~TCB_INSYSCALL;
 		tcp->scno = stop.code;
 		gdb_sig = stop.code;
 		wd->status = gdb_signal_to_target(tcp, gdb_sig);
@@ -958,10 +979,6 @@ gdb_next_event(void)
 	case GDB_STOP_SIGNAL:
 	{
 		size_t siginfo_size;
-		char *siginfo_reply =
-				gdb_xfer_read(gdb, "siginfo", "", &siginfo_size);
-		if (siginfo_reply && siginfo_size == sizeof(siginfo_t))
-			*si = *((siginfo_t *) siginfo_reply);
 
 		/* TODO gdbserver returns "native" siginfo of 32/64-bit
 		 * target but strace expects its own format as
@@ -969,11 +986,30 @@ gdb_next_event(void)
 		 * to reverse siginfo_fixup)
 		 * ((i.e. siginfo_from_compat_siginfo)) */
 
-		gdb_sig = si->si_signo;
+		if (stop.code == SIGABRT) {
+			/* strace.c::print_signalled handles this by checking WTERMSIG */
+			wd->status = gdb_signal_to_target(tcp, gdb_sig);
+			wd->te = TE_BREAK;
+			return wd;
+		}
+		else {
+			char *siginfo_reply =
+					gdb_xfer_read(gdb, "siginfo", "", &siginfo_size);
+			if (siginfo_reply && siginfo_size == sizeof(siginfo_t))
+				*si = *((siginfo_t *) siginfo_reply);
+
+			gdb_sig = si->si_signo;
+			free(siginfo_reply);
+		}
 		wd->status = W_EXITCODE (gdb_signal_to_target(tcp, gdb_sig), 0);
-		free(siginfo_reply);
 		wd->te = TE_SIGNAL_DELIVERY_STOP;
 		return wd;
+		break;
+	}
+	case GDB_STOP_FORK:
+	{
+		gdb_find_thread(stop.code, true);
+		break;
 	}
 
 	default:
@@ -985,6 +1021,8 @@ gdb_next_event(void)
 	return wd;
 }
 
+
+#if 0
 /*
  * Returns true iff the main trace loop has to continue.  The gdb
  * connection should be ready for a stop reply on entry,p and we'll
@@ -1118,7 +1156,7 @@ gdb_dispatch_event(enum trace_event ret, int *pstatus, void *si_p)
 
 	return true;
 }
-
+#endif
 
 char *
 gdb_get_all_regs(pid_t tid, size_t *size)
@@ -1179,6 +1217,8 @@ gdb_get_siginfo(void *data)
 int
 gdb_read_mem(pid_t tid, long addr, unsigned int len, bool check_nil, char *out)
 {
+	unsigned int chunk_limit = 0x40;
+	unsigned int original_len = len;
 	if (!gdb) {
 		errno = EINVAL;
 		return -1;
@@ -1190,7 +1230,7 @@ gdb_read_mem(pid_t tid, long addr, unsigned int len, bool check_nil, char *out)
 	 */
 	while (len) {
 		char cmd[] = "mxxxxxxxxxxxxxxxx,xxxx";
-		unsigned int chunk_len = len < 0x1000 ? len : 0x1000;
+		unsigned int chunk_len = len < chunk_limit ? len : chunk_limit;
 
 		snprintf(cmd, sizeof(cmd), "m%lx,%x", addr, chunk_len);
 		gdb_send_str(gdb, cmd);
@@ -1198,7 +1238,24 @@ gdb_read_mem(pid_t tid, long addr, unsigned int len, bool check_nil, char *out)
 		size_t size;
 		char *reply = gdb_recv(gdb, &size, false);
 
-		if (size < 2 || reply[0] == 'E' || size > len * 2 ||
+		/*
+		 * Try fetching a buffer.  gdbserver may return an error
+		 * because the initial address failed or there were fewer
+		 * than len bytes.  If the latter try fetching one byte at
+		 * a time.
+		 */
+		if (size < 2 || reply[0] == 'E') {
+			if (chunk_limit != 1) {
+				chunk_limit = 1;
+				continue;
+			} else if (original_len == len) {
+				free(reply);
+				errno = EINVAL;
+				return -1;
+			}
+		}
+
+		if (size > len * 2 ||
 		    gdb_decode_hex_buf(reply, size, out) < 0) {
 			free(reply);
 			errno = EINVAL;
@@ -1429,13 +1486,13 @@ const struct tracing_backend gdbserver_backend = {
 	.upeek              = gdb_upeek,
 	.upoke              = gdb_upoke,
 
-	.realpath           = (0),
-	.open               = (0),
-	.pread              = (0),
-	.close              = (0),
-	.readlink           = (0),
-	.getxattr           = (0),
-	.socket             = (0),
-	.sendmsg            = (0),
-	.recvmsg            = (0),
+	.realpath           = ptrace_realpath,
+	.open               = ptrace_open,
+	.pread              = ptrace_pread,
+	.close              = ptrace_close,
+	.readlink           = ptrace_readlink,
+	.getxattr           = ptrace_getxattr,
+	.socket             = ptrace_socket,
+	.sendmsg            = ptrace_sendmsg,
+	.recvmsg            = ptrace_recvmsg,
 };

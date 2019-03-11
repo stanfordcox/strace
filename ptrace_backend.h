@@ -64,6 +64,24 @@ extern int ptrace_upoke(struct tcb *tcp, unsigned long off, kernel_ulong_t val);
 
 extern int ptrace_open(struct tcb *tcp, const char *path, int flags, int mode);
 
+extern char *ptrace_realpath(struct tcb *tcp, const char *path, char *resolved_path);
+
+extern int ptrace_pread(struct tcb *tcp, int fd, void *buf, size_t count, off_t offset);
+
+extern int ptrace_close(struct tcb *tcp, int fd);
+
+extern ssize_t ptrace_readlink(struct tcb *tcp, const char *path, char *buf, size_t buf_size);
+
+extern ssize_t ptrace_getxattr(struct tcb *tcp, const char *path, const char *name, void *buf,
+		size_t buf_size);
+
+extern int ptrace_socket(struct tcb *tcp, int domain, int type, int protocol);
+
+extern ssize_t ptrace_sendmsg(struct tcb *tcp, int fd, const struct msghdr *msg, int flags);
+
+extern ssize_t ptrace_recvmsg(struct tcb *tcp, int fd, struct msghdr *msg, int flags);
+
+
 #if ADDITIONAL_TRACING_BACKENDS
 
 extern const struct tracing_backend ptrace_backend;

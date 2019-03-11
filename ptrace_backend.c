@@ -51,57 +51,57 @@ ptrace_open(struct tcb *tcp, const char *path, int flags, int mode)
 	return open_file(path, flags, mode);
 }
 
-#if ADDITIONAL_TRACING_BACKENDS
 
-static char *
+char *
 ptrace_realpath(struct tcb *tcp, const char *path, char *resolved_path)
 {
 	return realpath(path, resolved_path);
 }
 
-static int
+int
 ptrace_pread(struct tcb *tcp, int fd, void *buf, size_t count, off_t offset)
 {
 	return pread(fd, buf, count, offset);
 }
 
-static int
+int
 ptrace_close(struct tcb *tcp, int fd)
 {
 	return close(fd);
 }
 
-static ssize_t
+ssize_t
 ptrace_readlink(struct tcb *tcp, const char *path, char *buf, size_t buf_size)
 {
 	return readlink(path, buf, buf_size);
 }
 
-static ssize_t
+ssize_t
 ptrace_getxattr(struct tcb *tcp, const char *path, const char *name, void *buf,
 		size_t buf_size)
 {
 	return getxattr(path, name, buf, buf_size);
 }
 
-static int
+int
 ptrace_socket(struct tcb *tcp, int domain, int type, int protocol)
 {
 	return socket(domain, type, protocol);
 }
 
-static ssize_t
+ssize_t
 ptrace_sendmsg(struct tcb *tcp, int fd, const struct msghdr *msg, int flags)
 {
 	return sendmsg(fd, msg, flags);
 }
 
-static ssize_t
+ssize_t
 ptrace_recvmsg(struct tcb *tcp, int fd, struct msghdr *msg, int flags)
 {
 	return recvmsg(fd, msg, flags);
 }
 
+#if ADDITIONAL_TRACING_BACKENDS
 
 const struct tracing_backend ptrace_backend = {
 	.name               = "ptrace",
