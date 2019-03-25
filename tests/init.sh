@@ -99,7 +99,7 @@ run_strace_gdbserver()
 {
 	> "$LOG" || fail_ "failed to write $LOG"
 	args="$*"
-	gdbserver --once --multi :65432 &
+ 	gdbserver --once --multi :65432 &
 	# give gdbserver an opportunity to come up
 	sleep 1
 	if [ $? -gt 0 ] ; then
@@ -247,10 +247,6 @@ run_strace_match_diff()
 
 run_strace_gdbserver_match_diff()
 {
-        if [ $NAME = siginfo-gdb ] ; then
-	    fail_ "Expected failure"
-	    return
-	fi
 	args="$*"
 	[ -n "$args" -a -z "${args##*-e trace=*}" ] ||
 		set -- -e trace="${NAME%%-gdb}" "$@"

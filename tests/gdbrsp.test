@@ -44,7 +44,7 @@ gdbserver --once --multi :65432 &
 if [ $? -gt 0 ] ; then
 	framework_skip_ "Unable to start gdbserver"
 fi
-$STRACE -G localhost:65432 $(readlink -f ../gdbrsp) >& $LOG
+$STRACE -G localhost:65432 -q $(readlink -f ../gdbrsp) >& $LOG
 
 EXPECTED="$LOG.expected"
 cat > "$EXPECTED" << __EOF__
@@ -53,13 +53,12 @@ chroot.* = -1 EPERM .Operation not permitted.*
 pipe..3, 4...* = 0
 write.4, "a.0", 2..* = 2
 read.3, "a.0", 2..* = 2
-vfork.*unfinished.*
+clone.* =.*
 .pid.*exited with 0.*
-.*vfork resumed.* =.*
 syscall_0x75bcd15.*= -1.*
 __EOF__
 
-match_grep "$LOG" "$EXPECTED"
+match_grep "$LOG" "$EXPECTED" "running all-stop mode"
 rm -f $EXPECTED
 
 # non-stop
@@ -76,13 +75,13 @@ chroot.* = -1 EPERM .Operation not permitted.*
 pipe..3, 4...* = 0
 write.4, "a.0", 2..* = 2
 read.3, "a.0", 2..* = 2
-vfork.*unfinished.*
+clone.*unfinished.*
 syscall_0x75bcd15.*= -1.*
 .pid.*exited with 0.*
-.*vfork resumed.* =.*
+.*clone resumed.* =.*
 __EOF__
 
-match_grep "$LOG" "$EXPECTED"
+match_grep "$LOG" "$EXPECTED" "running non-stop mode"
 rm -f $EXPECTED
 
 # -e write,read

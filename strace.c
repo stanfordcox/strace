@@ -1775,9 +1775,6 @@ init(int argc, char *argv[])
 		case 'G':
 			set_tracing_backend(&gdbserver_backend);
 			tracing_backend_handle_arg(c, optarg);
-			/* gdbserver always follows the fork */
-			if (tracing_backend_handle_arg('f', optarg))
-				followfork = true;
 			break;
 #endif
 		case 'h':
@@ -1875,6 +1872,13 @@ init(int argc, char *argv[])
 			break;
 		}
 	}
+
+#ifdef ENABLE_GDBSERVER
+	/* gdbserver always follows the fork */
+	if (tracing_backend_handle_arg('f', optarg))
+		if (! followfork)
+			followfork++;
+#endif
 
 	argv += optind;
 	argc -= optind;

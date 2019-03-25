@@ -58,6 +58,7 @@ extern int detach_on_execve; /* set in init */
 
 static volatile int interrupted;
 static pid_t gdb_group_pid;
+static pid_t gdb_exit_group_pid;
 static const char process_needle[] = ";process:";
 char *gdbserver = NULL;
 
@@ -264,6 +265,8 @@ gdb_recv_signal(struct gdb_stop_reply *stop)
 		} else if (!strcmp(n, "vfork")) {
 			if (stop->type == GDB_STOP_TRAP) {
 				stop->type = GDB_STOP_VFORK;
+/*				strtok(r, ".");
+ *				 stop->code = gdb_decode_hex_str(strtok(NULL, "")); */
 				stop->code = gdb_decode_hex_str(r);
 			}
 		} else if (!strcmp(n, "vforkdone")) {
@@ -298,6 +301,17 @@ gdb_recv_exit(struct gdb_stop_reply *stop)
 		/* we don't really know the tid, so just use PID for now */
 		/* TODO should exits enumerate all threads we know of a process? */
 		stop->tid = stop->pid;
+	}
+	if (gdb_has_non_stop(gdb)) {
+		do {
+			/* non-stop mode awaits a reply; see gdb_recv_stop */
+			size_t this_size;
+			gdb_send_cstr(gdb, "vStopped");
+			reply = gdb_recv(gdb, &this_size, true);
+			if (strcmp(reply, "OK") == 0)
+				break;
+			push_notification(reply, this_size);
+		} while (true);
 	}
 }
 
@@ -524,7 +538,7 @@ gdb_init_syscalls(void)
 }
 
 static struct tcb*
-gdb_find_thread(int tid, bool current)
+gdb_find_thread(int tid, bool current, bool multiprocess)
 {
 	if (tid < 0)
 		return NULL;
@@ -536,15 +550,18 @@ gdb_find_thread(int tid, bool current)
 		after_successful_attach(tcp, TCB_GDB_CONT_PID_TID);
 
 		if (!current) {
-			char cmd[] = "Hgxxxxxxxxxxx";
-			snprintf(cmd, sizeof(cmd), "Hg%x", tid);
+			char cmd[] = "Hgpxxxxxxxx.xxxxxxxx";
+			if (multiprocess)
+				snprintf(cmd, sizeof(cmd), "Hgp%x.%x", tid, tid);
+			else
+				snprintf(cmd, sizeof(cmd), "Hg%x", tid);
 			gdb_send_str(gdb, cmd);
 			current = gdb_ok();
 			if (!current)
 				error_msg("couldn't set GDB server to thread "
 					  "%d", tid);
 		}
-		if (current)
+		if (current && tid != gdb_exit_group_pid)
 			gdb_init_syscalls();
 	}
 	return tcp;
@@ -570,7 +587,7 @@ gdb_enumerate_threads(void)
 
 			gdb_parse_thread(thread, &pid, &tid);
 
-			struct tcb *tcp = gdb_find_thread(tid, false);
+			struct tcb *tcp = gdb_find_thread(tid, false, false);
 
 			if (tcp && !current_tcp)
 				current_tcp = tcp;
@@ -690,7 +707,6 @@ gdb_startup_child(char **argv)
 
 	struct tcb *tcp = alloctcb(tid);
 
-//	tcp->flags |= TCB_ATTACHED | TCB_STARTUP;
 	after_successful_attach(tcp, 0);
 	gdb_init_syscalls();
 
@@ -794,7 +810,7 @@ gdb_attach_tcb(struct tcb *tcp)
 		droptcb(tcp);
 		tcp = alloctcb(tid);
 	}
-//	tcp->flags |= TCB_ATTACHED | TCB_STARTUP;
+
 	after_successful_attach(tcp,0);
 	gdb_init_syscalls();
 
@@ -848,7 +864,7 @@ gdb_next_event(void)
 	struct tcb *tcp = NULL;
 	siginfo_t *si = &wd->si;
 
-	// Do we have a process exit reply whose pid matches the original pid?
+	/* Do we have a process exit reply whose pid matches the original pid? */
 	if (stop.reply && stop.reply[0] == 'W')
 	{
 		const char *process = strstr(stop.reply, process_needle);
@@ -868,7 +884,7 @@ gdb_next_event(void)
 
 	stop.reply = pop_notification(&stop.size);
 	if (stop.type == GDB_STOP_EXITED)
-		// If we previously exited then we need to continue before waiting for a stop
+		/* If we previously exited then we need to continue before waiting for a stop */
 		gdb_restart_process (current_tcp, 0, NULL);
 
 	if (stop.reply)	    /* cached out of order notification? */
@@ -899,7 +915,7 @@ gdb_next_event(void)
 
 	if (gdb_multiprocess) {
 		tid = stop.tid;
-		tcp = gdb_find_thread(tid, true);
+		tcp = gdb_find_thread(tid, true, false);
 		/* Set current output file */
 		current_tcp = tcp;
 	} else if (current_tcp) {
@@ -945,11 +961,12 @@ gdb_next_event(void)
 		 * missed a return? -- skipping this report doesn't do
 		 * much good.  Might as well force it to be a new
 		 * entry regardless to sync up. */
-//		tcp->flags &= ~TCB_INSYSCALL;
+
 		tcp->scno = stop.code;
 		gdb_sig = stop.code;
 		wd->status = gdb_signal_to_target(tcp, gdb_sig);
 		if (stop.code == __NR_exit_group) {
+			gdb_exit_group_pid = tcp->pid;
 			wd->te = TE_GROUP_STOP;
 			return wd;
 		} else {
@@ -1008,7 +1025,13 @@ gdb_next_event(void)
 	}
 	case GDB_STOP_FORK:
 	{
-		gdb_find_thread(stop.code, true);
+		gdb_find_thread(stop.code, false, true);
+		break;
+	}
+
+	case GDB_STOP_VFORK:
+	{
+		gdb_find_thread(stop.code, false, true);
 		break;
 	}
 
@@ -1021,142 +1044,6 @@ gdb_next_event(void)
 	return wd;
 }
 
-
-#if 0
-/*
- * Returns true iff the main trace loop has to continue.  The gdb
- * connection should be ready for a stop reply on entry,p and we'll
- * leave it the same way if we return true.
- */
- __attribute__ ((unused)) // Replaced by strace.c::dispatch_event
- bool
-gdb_dispatch_event(enum trace_event ret, int *pstatus, void *si_p)
-{
-	siginfo_t *si = (siginfo_t*)si_p;
-	int gdb_sig = 0;
-	struct tcb *tcp = current_tcp;
-	pid_t tid;
-	unsigned int sig = 0;
-
-	/* Exit if the process has gone away */
-	if (tcp == 0)
-		return false;
-
-	tid = tcp->pid;
-	if (! (tcp->flags & TCB_GDB_CONT_PID_TID)) {
-		char cmd[] = "Hgxxxxxxxxxxx";
-
-		snprintf(cmd, sizeof(cmd), "Hg%x.%x", general_pid, general_tid);
-		debug_func_msg("%s", cmd);
-	}
-
-	/* TODO need code equivalent to PTRACE_EVENT_EXEC? */
-
-	/* Is this the very first time we see this tracee stopped? */
-	if (tcp->flags & TCB_STARTUP) {
-		tcp->flags &= ~TCB_STARTUP;
-		if (get_scno(tcp) == 1)
-			tcp->s_prev_ent = tcp->s_ent;
-	}
-
-	/* TODO cflag means we need to update tcp->dtime/stime usually
-	 * through wait rusage, but how can we do it? */
-
-	free (stop.reply);
-
-	switch (ret) {
-	case TE_BREAK:
-		return false;
-
-	case TE_RESTART:
-		break;
-
-	case TE_SYSCALL_STOP:
-		trace_syscall(tcp, &sig);
-		break;
-
-	case TE_SIGNAL_DELIVERY_STOP:
-		sig = *pstatus;
-		gdb_sig = stop.code;
-		print_stopped(tcp, si, *pstatus);
-		break;
-
-	case TE_SIGNALLED:
-		print_signalled(tcp, tid, *pstatus);
-		droptcb(tcp);
-		return false;
-
-	case TE_EXITED:
-		print_exited(tcp, tid, *pstatus);
-		/* Don't continue if the process exited */
-		if (!gdb_multiprocess || gdb_has_non_stop(gdb))
-			return false;
-		break;
-
-	case TE_STOP_BEFORE_EXECVE:
-	case TE_STOP_BEFORE_EXIT:
-		/* TODO backend->handle_exec? */
-		return false;
-
-	case TE_GROUP_STOP:
-		/* TODO backend->handle_group_stop? */
-		trace_syscall(tcp, &sig);
-		sig = *pstatus;
-		return false;
-
-	case TE_NEXT:
-		break;
-	}
-
-	/* We handled quick cases, we are permitted to interrupt now. */
-	if (interrupted)
-		return false;
-
-	/* Don't continue gdbserver until we handle any queued notifications */
-	if (have_notification())
-		return true;
-
-	if (stop.code) {
-		if (gdb_vcont) {
-			/* send the signal to this target and continue everyone else */
-			char cmd[] = "vCont;Cxx:xxxxxxxxxxx;c";
-
-			snprintf(cmd, sizeof(cmd),
-				 "vCont;C%02x:%x;c", gdb_sig, tid);
-			gdb_send_str(gdb, cmd);
-		} else {
-			/* just send the signal */
-			char cmd[] = "Cxx";
-
-			snprintf(cmd, sizeof(cmd), "C%02x", gdb_sig);
-			gdb_send_str(gdb, cmd);
-		}
-	} else {
-		if (gdb_vcont) {
-			/* For non-stop use $vCont;c:pid.tid where
-			 * pid.tid is the thread gdbserver is focused
-			 * on */
-			char cmd[] = "vCont;c:xxxxxxxx.xxxxxxxx";
-			struct tcb *general_tcp =
-				gdb_find_thread(general_tid, true);
-
-			if (gdb_has_non_stop(gdb) &&
-			    general_pid != general_tid &&
-			    general_tcp->flags & TCB_GDB_CONT_PID_TID)
-				snprintf(cmd, sizeof(cmd), "vCont;c:p%x.%x",
-					 general_pid, general_tid);
-			else
-				snprintf(cmd, sizeof(cmd), "vCont;c");
-
-			gdb_send_str(gdb, cmd);
-		} else {
-			gdb_send_cstr(gdb, "c");
-		}
-	}
-
-	return true;
-}
-#endif
 
 char *
 gdb_get_all_regs(pid_t tid, size_t *size)
@@ -1403,7 +1290,7 @@ bool
 gdb_restart_process(struct tcb *current_tcp, unsigned int restart_sig,
 		       void *data)
 {
-	// gdb_restart_process <- restart_process <- dispatch_event (next_event) <- main
+	/* gdb_restart_process <- restart_process <- dispatch_event (next_event) <- main */
 	int gdb_sig = 0 /*stop.code*/;
 	pid_t tid = current_tcp ? current_tcp->pid : 0;
 
@@ -1431,14 +1318,20 @@ gdb_restart_process(struct tcb *current_tcp, unsigned int restart_sig,
 			 * pid.tid is the thread gdbserver is focused
 			 * on */
 			char cmd[] = "vCont;c:xxxxxxxx.xxxxxxxx";
-			struct tcb *general_tcp =
-				gdb_find_thread(general_tid, true);
+			struct tcb *general_tcp = current_tcp ? gdb_find_thread(general_tid, true, false) : NULL;
 
+			debug_msg("current_tcp %d general_pid %d general_tid %d\n", current_tcp ? current_tcp->pid : 0, general_pid, general_tid);
 			if (gdb_has_non_stop(gdb) && general_pid != general_tid
-				&& general_tcp->flags & TCB_GDB_CONT_PID_TID)
+				&& general_tcp && general_tcp->flags & TCB_GDB_CONT_PID_TID)
 				snprintf(cmd, sizeof(cmd), "vCont;c:p%x.%x",
 					 general_pid, general_tid);
-			else
+ 			else if (current_tcp == NULL) {
+ 				if (gdb_has_non_stop(gdb))
+ 					snprintf(cmd, sizeof(cmd), "vCont;c:p%x.%x",
+ 							gdb_group_pid, gdb_group_pid);
+ 				else
+ 					snprintf(cmd, sizeof(cmd), "vCont;c:p%x.-1", gdb_group_pid);
+ 			} else
 				snprintf(cmd, sizeof(cmd), "vCont;c");
 
 			gdb_send_str(gdb, cmd);

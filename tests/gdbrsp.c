@@ -66,9 +66,8 @@ main (int argc, char *const argv[])
 	write (fd[1], buf1, sizeof (buf1));
 	read (fd[0], buf2, sizeof (buf2));
 
-	/* Test vfork-event interactions.  Child exits immediately.
-	   (Plain fork won't work on no-mmu kernel configurations.)  */
-	if (vfork () == 0)
+	/* Test fork-event interactions.  Child exits immediately. */
+	if (fork () == 0)
 	  _exit (0);
 
 	/* Trigger an intentional ENOSYS.  */
