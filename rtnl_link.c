@@ -4,27 +4,7 @@
  * Copyright (c) 2016-2018 The strace developers.
  * All rights reserved.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- * 3. The name of the author may not be used to endorse or promote products
- *    derived from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
- * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
- * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
- * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: LGPL-2.1-or-later
  */
 
 #include "defs.h"
@@ -334,6 +314,7 @@ static const nla_decoder_t ifla_info_data_bridge_nla_decoders[] = {
 	[IFLA_BR_MCAST_STATS_ENABLED]		= decode_nla_u8,
 	[IFLA_BR_MCAST_IGMP_VERSION]		= decode_nla_u8,
 	[IFLA_BR_MCAST_MLD_VERSION]		= decode_nla_u8,
+	[IFLA_BR_VLAN_STATS_PER_PORT]		= decode_nla_u8,
 };
 
 bool
@@ -358,7 +339,7 @@ decode_nla_tun_type(struct tcb *const tcp,
 {
 	const struct decode_nla_xlat_opts opts = {
 		.xlat = tun_device_types,
-		.xlat_size = ARRAY_SIZE(tun_device_types),
+		.xlat_size = ARRAY_SIZE(tun_device_types) - 1,
 		.xt = XT_INDEXED,
 		.dflt = "IFF_???",
 		.size = 1,
@@ -482,10 +463,10 @@ decode_rtnl_link_stats64(struct tcb *const tcp,
 
 		PRINT_FIELD_U(", ", st, rx_compressed);
 		PRINT_FIELD_U(", ", st, tx_compressed);
-#ifdef HAVE_STRUCT_RTNL_LINK_STATS64_RX_NOHANDLER
+# ifdef HAVE_STRUCT_RTNL_LINK_STATS64_RX_NOHANDLER
 		if (len >= def_size)
 			PRINT_FIELD_U(", ", st, rx_nohandler);
-#endif
+# endif
 		tprints("}");
 	}
 
@@ -584,7 +565,7 @@ decode_ifla_xdp_attached(struct tcb *const tcp,
 {
 	const struct decode_nla_xlat_opts opts = {
 		.xlat = rtnl_ifla_xdp_attached_mode,
-		.xlat_size = ARRAY_SIZE(rtnl_ifla_xdp_attached_mode),
+		.xlat_size = ARRAY_SIZE(rtnl_ifla_xdp_attached_mode) - 1,
 		.xt = XT_INDEXED,
 		.dflt = "XDP_ATTACHED_???",
 		.size = 1,
@@ -648,7 +629,8 @@ decode_ifla_inet_conf(struct tcb *const tcp,
 	print_array_ex(tcp, addr, cnt, &elem, sizeof(elem),
 		       tfetch_mem, print_int32_array_member, NULL,
 		       PAF_PRINT_INDICES | PAF_INDEX_XLAT_VALUE_INDEXED
-			| XLAT_STYLE_FMT_D, ARRSZ_PAIR(inet_devconf_indices),
+			| XLAT_STYLE_FMT_D,
+		       ARRSZ_PAIR(inet_devconf_indices) - 1,
 		       "IPV4_DEVCONF_???");
 
 	return true;
@@ -665,7 +647,7 @@ decode_ifla_inet6_flags(struct tcb *const tcp,
 		        const void *const opaque_data)
 {
 	const struct decode_nla_xlat_opts opts = {
-		ARRSZ_PAIR(inet6_if_flags), "IF_???",
+		ARRSZ_PAIR(inet6_if_flags) - 1, "IF_???",
 		.size = 4,
 	};
 
@@ -687,7 +669,8 @@ decode_ifla_inet6_conf(struct tcb *const tcp,
 	print_array_ex(tcp, addr, cnt, &elem, sizeof(elem),
 		       tfetch_mem, print_int32_array_member, NULL,
 		       PAF_PRINT_INDICES | PAF_INDEX_XLAT_VALUE_INDEXED
-			| XLAT_STYLE_FMT_D, ARRSZ_PAIR(inet6_devconf_indices),
+			| XLAT_STYLE_FMT_D,
+		       ARRSZ_PAIR(inet6_devconf_indices) - 1,
 		       "DEVCONF_???");
 
 	return true;
@@ -708,7 +691,7 @@ decode_ifla_inet6_stats(struct tcb *const tcp,
 	print_array_ex(tcp, addr, cnt, &elem, sizeof(elem),
 		       tfetch_mem, print_uint64_array_member, NULL,
 		       PAF_PRINT_INDICES | PAF_INDEX_XLAT_VALUE_INDEXED
-			| XLAT_STYLE_FMT_U, ARRSZ_PAIR(snmp_ip_stats),
+			| XLAT_STYLE_FMT_U, ARRSZ_PAIR(snmp_ip_stats) - 1,
 		       "IPSTATS_MIB_???");
 
 	return true;
@@ -755,7 +738,7 @@ decode_ifla_inet6_icmp6_stats(struct tcb *const tcp,
 	print_array_ex(tcp, addr, cnt, &elem, sizeof(elem),
 		       tfetch_mem, print_uint64_array_member, NULL,
 		       PAF_PRINT_INDICES | PAF_INDEX_XLAT_VALUE_INDEXED
-			| XLAT_STYLE_FMT_U, ARRSZ_PAIR(snmp_icmp6_stats),
+			| XLAT_STYLE_FMT_U, ARRSZ_PAIR(snmp_icmp6_stats) - 1,
 		       "ICMP6_MIB_???");
 
 	return true;
@@ -768,7 +751,7 @@ decode_ifla_inet6_agm(struct tcb *const tcp,
 		      const void *const opaque_data)
 {
 	const struct decode_nla_xlat_opts opts = {
-		ARRSZ_PAIR(in6_addr_gen_mode), "IN6_ADDR_GEN_MODE_???",
+		ARRSZ_PAIR(in6_addr_gen_mode) - 1, "IN6_ADDR_GEN_MODE_???",
 		.xt = XT_INDEXED,
 		.size = 1,
 	};

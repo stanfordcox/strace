@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2004-2019 The strace developers.
+ * All rights reserved.
+ *
+ * SPDX-License-Identifier: LGPL-2.1-or-later
+ */
+
 [  0] = { 0,	0,		SEN(restart_syscall),		"restart_syscall"	},
 [  1] = { 1,	TP|SE,		SEN(exit),			"exit"			},
 [  2] = { 0,	TP,		SEN(fork),			"fork"			},
@@ -359,5 +366,5 @@
 [360] = { 5,	TD|TF|TSTA,	SEN(statx),			"statx"			},
 [361] = { 6,	0,		SEN(io_pgetevents),		"io_pgetevents"		},
 
-#define SYS_socket_subcall	400
+#define SYS_socket_subcall	500
 #include "subcall.h"

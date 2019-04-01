@@ -2,30 +2,10 @@
  * Check decoding and dumping of read and write syscalls.
  *
  * Copyright (c) 2016 Dmitry V. Levin <ldv@altlinux.org>
- * Copyright (c) 2016-2018 The strace developers.
+ * Copyright (c) 2016-2019 The strace developers.
  * All rights reserved.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- * 3. The name of the author may not be used to endorse or promote products
- *    derived from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
- * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
- * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
- * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 #include "tests.h"
@@ -37,7 +17,7 @@
 #include <asm/unistd.h>
 
 static void
-dump_str(const char *str, const unsigned int len)
+dump_str_ex(const char *str, const unsigned int len, const int idx_w)
 {
 	static const char chars[256] =
 		"................................"
@@ -54,11 +34,17 @@ dump_str(const char *str, const unsigned int len)
 		unsigned int n = len - i > 16 ? 16 : len - i;
 		const char *dump = hexdump_memdup(str + i, n);
 
-		tprintf(" | %05x %-49s  %-16.*s |\n",
-			i, dump, n, chars + i);
+		tprintf(" | %0*x %-49s  %-16.*s |\n",
+			idx_w, i, dump, n, chars + i % 0x100);
 
 		free((void *) dump);
 	}
+}
+
+static inline void
+dump_str(const char *str, const unsigned int len)
+{
+	dump_str_ex(str, len, 5);
 }
 
 static void
@@ -209,7 +195,6 @@ main(void)
 	tprintf("write(1, \"%s\", %u) = %ld\n"
 		" | 00000 %-49s  %-16s |\n",
 		w_c, w_len, rc, w_d, w_c);
-	close(1);
 
 	rc = k_read(0, r0, 0);
 	if (rc)
@@ -237,6 +222,47 @@ main(void)
 		" | 00000 %-49s  %-16s |\n",
 		r1_c, w_len, rc, r1_d, r1_c);
 	close(0);
+
+	/*
+	 * Check partial dump; relies on dumpstr() implementation details
+	 * (maximum size of chunk to be copied at once).
+	 */
+	static const size_t six_wide_size = 1 << 20;
+	static const size_t fetch_size = 1 << 16;
+	static const char big_buf_str[] =
+		"\\0\\1\\2\\3\\4\\5\\6\\7"
+		"\\10\\t\\n\\v\\f\\r\\16\\17"
+		"\\20\\21\\22\\23\\24\\25\\26\\27"
+		"\\30\\31\\32\\33\\34\\35\\36\\37";
+	const size_t buf_size = six_wide_size + fetch_size;
+	const size_t sizes[] = {
+		six_wide_size,
+		six_wide_size + 1,
+		buf_size,
+		buf_size + 1,
+		buf_size + 2,
+	};
+	char *big_buf = tail_alloc(buf_size);
+
+	fill_memory_ex(big_buf, buf_size, 0, 0x100);
+
+	for (size_t i = 0; i < ARRAY_SIZE(sizes); i++) {
+		rc = k_write(1, big_buf, sizes[i]);
+		tprintf("write(1, \"%s\"..., %zu) = %s\n",
+			big_buf_str, sizes[i], sprintrc(rc));
+		dump_str_ex(big_buf, MIN(sizes[i], buf_size),
+			    sizes[i] > six_wide_size ? 6 : 5);
+
+		if (sizes[i] == buf_size + 1)
+			tprintf(" | <Cannot fetch 1 byte from pid %d @%p>\n",
+				getpid(), big_buf + buf_size);
+
+		if (sizes[i] == buf_size + 2)
+			tprintf(" | <Cannot fetch 2 bytes from pid %d @%p>\n",
+				getpid(), big_buf + buf_size);
+	}
+
+	close(1);
 
 	if (open("/dev/zero", O_RDONLY))
 		perror_msg_and_fail("open");

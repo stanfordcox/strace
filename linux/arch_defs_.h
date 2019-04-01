@@ -1,4 +1,11 @@
-/* Fallback file for arch-specific definitions.  */
+/*
+ * Fallback file for arch-specific definitions.
+ *
+ * Copyright (c) 2018-2019 The strace developers.
+ * All rights reserved.
+ *
+ * SPDX-License-Identifier: LGPL-2.1-or-later
+ */
 
 #ifndef HAVE_ARCH_GETRVAL2
 # define HAVE_ARCH_GETRVAL2 0
@@ -34,4 +41,8 @@
 
 #ifndef CAN_ARCH_BE_COMPAT_ON_64BIT_KERNEL
 # define CAN_ARCH_BE_COMPAT_ON_64BIT_KERNEL 0
+#endif
+
+#ifndef ARCH_NEEDS_SET_ERROR_FOR_SCNO_TAMPERING
+# define ARCH_NEEDS_SET_ERROR_FOR_SCNO_TAMPERING 0
 #endif

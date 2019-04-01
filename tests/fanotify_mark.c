@@ -3,30 +3,10 @@
  *
  * Copyright (c) 2015-2016 Dmitry V. Levin <ldv@altlinux.org>
  * Copyright (c) 2016 Eugene Syromyatnikov <evgsyr@gmail.com>
- * Copyright (c) 2015-2018 The strace developers.
+ * Copyright (c) 2015-2019 The strace developers.
  * All rights reserved.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- * 3. The name of the author may not be used to endorse or promote products
- *    derived from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
- * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
- * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
- * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 #include "tests.h"
@@ -41,19 +21,19 @@
 # include <unistd.h>
 # include <sys/fanotify.h>
 
-#if XLAT_RAW
-# define str_fan_mark_add	"0x1"
-# define str_fan_modify_ondir	"0x40000002"
-# define str_at_fdcwd		"-100"
-#elif XLAT_VERBOSE
-# define str_fan_mark_add	"0x1 /* FAN_MARK_ADD */"
-# define str_fan_modify_ondir	"0x40000002 /* FAN_MODIFY|FAN_ONDIR */"
-# define str_at_fdcwd		"-100 /* AT_FDCWD */"
-#else
-# define str_fan_mark_add	"FAN_MARK_ADD"
-# define str_fan_modify_ondir	"FAN_MODIFY|FAN_ONDIR"
-# define str_at_fdcwd		"AT_FDCWD"
-#endif
+# if XLAT_RAW
+#  define str_fan_mark_add	"0x1"
+#  define str_fan_modify_ondir	"0x40000002"
+#  define str_at_fdcwd		"-100"
+# elif XLAT_VERBOSE
+#  define str_fan_mark_add	"0x1 /* FAN_MARK_ADD */"
+#  define str_fan_modify_ondir	"0x40000002 /* FAN_MODIFY|FAN_ONDIR */"
+#  define str_at_fdcwd		"-100 /* AT_FDCWD */"
+# else
+#  define str_fan_mark_add	"FAN_MARK_ADD"
+#  define str_fan_modify_ondir	"FAN_MODIFY|FAN_ONDIR"
+#  define str_at_fdcwd		"AT_FDCWD"
+# endif
 
 /* Performs fanotify_mark call via the syscall interface. */
 static void
@@ -93,8 +73,8 @@ struct strval64 {
 	const char *str;
 };
 
-#define STR16 "0123456789abcdef"
-#define STR64 STR16 STR16 STR16 STR16
+# define STR16 "0123456789abcdef"
+# define STR64 STR16 STR16 STR16 STR16
 
 int
 main(void)
@@ -112,70 +92,70 @@ main(void)
 		{ F8ILL_KULONG_MASK, "0" },
 		{ (kernel_ulong_t) 0xdec0deddefaced00ULL,
 			"0xefaced00"
-#if !XLAT_RAW
+# if !XLAT_RAW
 			" /* FAN_MARK_??? */"
-#endif
+# endif
 			},
 		{ (kernel_ulong_t) 0xda7a105700000040ULL,
-#if XLAT_RAW
+# if XLAT_RAW
 			"0x40"
-#elif XLAT_VERBOSE
+# elif XLAT_VERBOSE
 			"0x40 /* FAN_MARK_IGNORED_SURV_MODIFY */"
-#else
+# else
 			"FAN_MARK_IGNORED_SURV_MODIFY"
-#endif
+# endif
 			},
 		{ (kernel_ulong_t) 0xbadc0deddeadfeedULL,
-#if XLAT_RAW || XLAT_VERBOSE
+# if XLAT_RAW || XLAT_VERBOSE
 			"0xdeadfeed"
-#endif
-#if XLAT_VERBOSE
+# endif
+# if XLAT_VERBOSE
 			" /* "
-#endif
-#if !XLAT_RAW
+# endif
+# if !XLAT_RAW
 			"FAN_MARK_ADD|FAN_MARK_DONT_FOLLOW|FAN_MARK_ONLYDIR|"
 			"FAN_MARK_IGNORED_MASK|FAN_MARK_IGNORED_SURV_MODIFY|"
 			"FAN_MARK_FLUSH|0xdeadfe00"
-#endif
-#if XLAT_VERBOSE
+# endif
+# if XLAT_VERBOSE
 			" */"
-#endif
+# endif
 			},
 	};
 	static const struct strval64 masks[] = {
 		{ ARG_ULL_STR(0) },
 		{ 0xdeadfeedfacebeefULL,
-#if XLAT_RAW || XLAT_VERBOSE
+# if XLAT_RAW || XLAT_VERBOSE
 			"0xdeadfeedfacebeef"
-#endif
-#if XLAT_VERBOSE
+# endif
+# if XLAT_VERBOSE
 			" /* "
-#endif
-#if !XLAT_RAW
+# endif
+# if !XLAT_RAW
 			"FAN_ACCESS|FAN_MODIFY|FAN_CLOSE_WRITE|FAN_OPEN|"
-			"FAN_ACCESS_PERM|FAN_ONDIR|FAN_EVENT_ON_CHILD|"
-			"0xdeadfeedb2ccbec4"
-#endif
-#if XLAT_VERBOSE
+			"FAN_OPEN_EXEC|FAN_ACCESS_PERM|FAN_OPEN_EXEC_PERM|"
+			"FAN_ONDIR|FAN_EVENT_ON_CHILD|0xdeadfeedb2c8aec4"
+# endif
+# if XLAT_VERBOSE
 			" */"
-#endif
+# endif
 			},
-		{ ARG_ULL_STR(0xffffffffb7fcbfc4)
-#if !XLAT_RAW
+		{ ARG_ULL_STR(0xffffffffb7f8afc4)
+# if !XLAT_RAW
 			" /* FAN_??? */"
-#endif
+# endif
 			},
 	};
 	static const struct strval dirfds[] = {
 		{ (kernel_ulong_t) 0xfacefeed00000001ULL, "1" },
 		{ (kernel_ulong_t) 0xdec0ded0ffffffffULL,
-#if XLAT_RAW
+# if XLAT_RAW
 			"-1"
-#elif XLAT_VERBOSE
+# elif XLAT_VERBOSE
 			"-1 /* FAN_NOFD */"
-#else
+# else
 			"FAN_NOFD"
-#endif
+# endif
 			},
 		{ (kernel_ulong_t) 0xbadfacedffffff9cULL, str_at_fdcwd },
 		{ (kernel_ulong_t) 0xdefaced1beeff00dULL, "-1091571699" },

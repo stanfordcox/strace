@@ -1,9 +1,16 @@
+/*
+ * Copyright (c) 2017-2018 The strace developers.
+ * All rights reserved.
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
 #ifdef MANGLE
 
-#define f0 _ZN2ns2f0Ei
-#define f1 _ZN2ns2f1Ei
-#define f2 _ZN2ns2f2Ei
-#define f3 _ZN2ns2f3Ei
+# define f0 _ZN2ns2f0Ei
+# define f1 _ZN2ns2f1Ei
+# define f2 _ZN2ns2f2Ei
+# define f3 _ZN2ns2f3Ei
 
 #endif
 

@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2013-2019 The strace developers.
+ * All rights reserved.
+ *
+ * SPDX-License-Identifier: LGPL-2.1-or-later
+ */
+
 #if defined LINUX_MIPSN32
 /* For an N32 strace decode the N32 64-bit syscalls. */
 [6000] = { 3,	TD,		SEN(read),			"read"			}, /* start of Linux N32 */
@@ -334,7 +341,7 @@
 [6331] = { 4,	0,		SEN(rseq),			"rseq"			},
 [6332] = { 6,	0,		SEN(io_pgetevents),		"io_pgetevents"		},
 
-# define SYS_socket_subcall      6400
+# define SYS_socket_subcall      6500
 # include "subcall.h"
 
 #else

@@ -1,5 +1,83 @@
-Noteworthy changes in release ?.?? (????-??-??)
+Noteworthy changes in release ?.? (????-??-??)
+==============================================
+
+* Bug fixes
+  * Fixed decoding of last two arguments of clone syscall on riscv.
+
+Noteworthy changes in release 5.0 (2019-03-19)
+==============================================
+
+* Changes in behavior
+  * -D option now implies -I4: by default strace ignores SIGHUP, SIGINT,
+    SIGQUIT, SIGPIPE, SIGTERM, SIGTTIN, SIGTTOU, and SIGTSTP when -D option
+    is used.
+  * Diagnostic message is no longer printed if an attempt to restart a process
+    has failed with ESRCH.  (Addresses RHBZ bug #1662936.)
+  * ASCII dump no longer tries to read the whole buffer at once.  As result,
+    it can fail with a diagnostic message after dumping only a part.
+    Amount of preceding zeroes printed for offset is now chosen in a way
+    to accommodate all the digits of all the offsets being printed.
+
+* Improvements
+  * Changed the way tracees are handled: all pending tracees are now waited for
+    before further processing, this improves fairness of tracee processing.
+    (Addresses RHBZ bugs #478419, #526740, #851457, #1609318, #1610774,
+    and maybe some others.)
+  * Enhanced xlat styles support configured by -X option.
+  * Enhanced decoding of bpf syscall.
+  * Enhanced decoding of PTRACE_PEEKUSER and PTRACE_POKEUSER on hppa.
+  * Enhanced pid formatting in strace-log-merge output.
+  * Wired up kexec_file_load and rseq syscalls on aarch64, arc, metag, nios2,
+    or1k, riscv, and tile architectures.
+  * Updated lists of BPF_*, BTRFS_*, FAN_*, IFLA_*, KERN_*, KVM_CAP_*, NDA_*,
+    NETNSA_*, NT_*, PR_*, REL_*, SECCOMP_*, SCTP_*, UDP_*, V4L2_*, and *_MAGIC
+    constants.
+  * Updated lists of ioctl commands from Linux 5.0.
+
+* Bug fixes
+  * Fixed ordering of sockaddr_in6 fields.
+  * Fixed strace-k test on alpha.
+  * Fixed build on mips o32.
+  * Fixed build on NOMMU architectures.
+  * Fixed build in --with-libiberty=yes mode.
+  * Fixed potential NULL dereference during printing of line continuation
+    for syscalls that haven't been decoded.
+  * Fixed strace-log-merge error diagnostics.
+
+Noteworthy changes in release 4.26 (2018-12-26)
 ===============================================
+
+* License
+  * The test suite is now provided under the terms of
+    the GNU General Public License version 2 or later.
+  * All the rest of strace is now provided under the terms of
+    the GNU Lesser General Public License version 2.1 or later.
+
+* Changes in behavior
+  * If strace is interrupted by a signal it handles (currently
+    one of HUP, INT, QUIT, PIPE, or TERM), strace terminates
+    itself with this signal.
+
+* Improvements
+  * Implemented obtainment of system call information using
+    PTRACE_GET_SYSCALL_INFO ptrace API.
+  * Implemented decoding of PTRACE_GET_SYSCALL_INFO ptrace request.
+  * Implemented decoding of BLKGETZONESZ, BLKGETNRZONES, and RND* ioctl
+    commands.
+  * Enhanced xlat styles support configured by -X option.
+  * Enhanced internet address formatting in structureless contexts.
+  * Enhanced decoding of getsockopt SO_ERROR option.
+  * Enhanced error diagnostics when the first exec fails.
+  * Added %net as a short form of %network in syscall specifications.
+  * Updated lists of ABS_*, BPF_*, FAN_*, IFA_*, IFLA_*, KVM_CAP_*, NETLINK_*,
+    NTF_*, PR_SPEC_*, REL_*, SOL_*, TCA_*, and V4L2_* constants.
+  * Updated lists of ioctl commands from Linux 4.20.
+  * Enhanced manual page.
+
+* Bug fixes
+  * Fixed "xlat_idx: Unexpected xlat value 0" warnings.
+  * Fixed sthyi output format on s390.
+  * Documented -X option in strace -h output.
 
 Noteworthy changes in release 4.25 (2018-10-30)
 ===============================================

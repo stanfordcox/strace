@@ -1,30 +1,10 @@
 /*
  * Copyright (c) 2015-2017 Dmitry V. Levin <ldv@altlinux.org>
  * Copyright (c) 2017 Quentin Monnet <quentin.monnet@6wind.com>
- * Copyright (c) 2015-2018 The strace developers.
+ * Copyright (c) 2015-2019 The strace developers.
  * All rights reserved.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- * 3. The name of the author may not be used to endorse or promote products
- *    derived from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
- * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
- * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
- * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: LGPL-2.1-or-later
  */
 
 #include "defs.h"
@@ -47,6 +27,7 @@
 #include "xlat/bpf_attach_type.h"
 #include "xlat/bpf_attach_flags.h"
 #include "xlat/bpf_query_flags.h"
+#include "xlat/bpf_task_fd_type.h"
 #include "xlat/ebpf_regs.h"
 #include "xlat/numa_node.h"
 
@@ -232,6 +213,16 @@ BEGIN_BPF_CMD_DECODER(BPF_MAP_CREATE)
 	if (len <= offsetof(struct BPF_MAP_CREATE_struct, map_ifindex))
 		break;
 	PRINT_FIELD_IFINDEX(", ", attr, map_ifindex);
+
+	/*
+	 * The following three fields were introduced by Linux commits
+	 * v4.18-rc1~114^2~417^2~1^2~3 and v4.18-rc1~114^2~148^2~7^2~2.
+	 */
+	if (len <= offsetof(struct BPF_MAP_CREATE_struct, btf_fd))
+		break;
+	PRINT_FIELD_FD(", ", attr, btf_fd, tcp);
+	PRINT_FIELD_U(", ", attr, btf_key_type_id);
+	PRINT_FIELD_U(", ", attr, btf_value_type_id);
 }
 END_BPF_CMD_DECODER(RVAL_DECODED | RVAL_FD)
 
@@ -242,6 +233,8 @@ BEGIN_BPF_CMD_DECODER(BPF_MAP_LOOKUP_ELEM)
 	PRINT_FIELD_ADDR64(", ", attr, value);
 }
 END_BPF_CMD_DECODER(RVAL_DECODED)
+
+#define decode_BPF_MAP_LOOKUP_AND_DELETE_ELEM decode_BPF_MAP_LOOKUP_ELEM
 
 BEGIN_BPF_CMD_DECODER(BPF_MAP_UPDATE_ELEM)
 {
@@ -292,11 +285,8 @@ BEGIN_BPF_CMD_DECODER(BPF_PROG_LOAD)
 	/* kern_version field was added in Linux commit v4.1-rc1~84^2~50.  */
 	if (len <= offsetof(struct BPF_PROG_LOAD_struct, kern_version))
 		break;
-	tprintf(", kern_version=KERNEL_VERSION(%u, %u, %u)",
-		attr.kern_version >> 16,
-		(attr.kern_version >> 8) & 0xFF,
-		attr.kern_version & 0xFF);
-
+	tprints(", kern_version=");
+	print_kernel_version(attr.kern_version);
 	/* prog_flags field was added in Linux commit v4.12-rc2~34^2~29^2~2.  */
 	if (len <= offsetof(struct BPF_PROG_LOAD_struct, prog_flags))
 		break;
@@ -327,6 +317,20 @@ BEGIN_BPF_CMD_DECODER(BPF_PROG_LOAD)
 		break;
 	PRINT_FIELD_XVAL(", ", attr, expected_attach_type, bpf_attach_type,
 			 "BPF_???");
+
+	/*
+	 * The following seven fields were introduced by Linux commits
+	 * v5.0-rc1~129^2~209^2~16^2~8 and v5.0-rc1~129^2~114^2~5^2~6.
+	 */
+	if (len <= offsetof(struct BPF_PROG_LOAD_struct, prog_btf_fd))
+		break;
+	PRINT_FIELD_FD(", ", attr, prog_btf_fd, tcp);
+	PRINT_FIELD_U(", ", attr, func_info_rec_size);
+	PRINT_FIELD_ADDR64(", ", attr, func_info);
+	PRINT_FIELD_U(", ", attr, func_info_cnt);
+	PRINT_FIELD_U(", ", attr, line_info_rec_size);
+	PRINT_FIELD_ADDR64(", ", attr, line_info);
+	PRINT_FIELD_U(", ", attr, line_info_cnt);
 }
 END_BPF_CMD_DECODER(RVAL_DECODED | RVAL_FD)
 
@@ -407,7 +411,7 @@ BEGIN_BPF_CMD_DECODER(BPF_PROG_GET_FD_BY_ID)
 	PRINT_FIELD_FLAGS(", ", attr, open_flags, bpf_file_mode_flags,
 			  "BPF_F_???");
 }
-END_BPF_CMD_DECODER(RVAL_DECODED)
+END_BPF_CMD_DECODER(RVAL_DECODED | RVAL_FD)
 
 BEGIN_BPF_CMD_DECODER(BPF_MAP_GET_FD_BY_ID)
 {
@@ -420,7 +424,7 @@ BEGIN_BPF_CMD_DECODER(BPF_MAP_GET_FD_BY_ID)
 	PRINT_FIELD_FLAGS(", ", attr, open_flags, bpf_file_mode_flags,
 			  "BPF_F_???");
 }
-END_BPF_CMD_DECODER(RVAL_DECODED)
+END_BPF_CMD_DECODER(RVAL_DECODED | RVAL_FD)
 
 struct obj_get_info_saved;
 typedef void (*print_bpf_obj_info_fn)(struct tcb *,
@@ -437,6 +441,20 @@ struct obj_get_info_saved {
 	uint32_t jited_prog_len;
 	uint32_t xlated_prog_len;
 	uint32_t nr_map_ids;
+
+	uint32_t nr_jited_ksyms;
+	uint32_t nr_jited_func_lens;
+	uint64_t jited_ksyms;
+	uint64_t jited_func_lens;
+
+	uint32_t func_info_rec_size;
+	uint32_t nr_func_info;
+	uint32_t nr_line_info;
+	uint32_t nr_jited_line_info;
+	uint64_t jited_line_info;
+	uint32_t line_info_rec_size;
+	uint32_t jited_line_info_rec_size;
+	uint32_t nr_prog_tags;
 };
 
 static void
@@ -476,6 +494,16 @@ print_bpf_map_info(struct tcb * const tcp, uint32_t bpf_fd,
 	PRINT_FIELD_DEV(", ", info, netns_dev);
 	PRINT_FIELD_U(", ", info, netns_ino);
 
+	/*
+	 * The next three fields were introduced by Linux commits
+	 * v4.18-rc1~114^2~223^2~21^2~4 and v4.18-rc1~114^2~148^2~7^2~2.
+	 */
+	if (len <= offsetof(struct bpf_map_info_struct, btf_id))
+		goto print_bpf_map_info_end;
+	PRINT_FIELD_U(", ", info, btf_id);
+	PRINT_FIELD_U(", ", info, btf_key_type_id);
+	PRINT_FIELD_U(", ", info, btf_value_type_id);
+
 	decode_attr_extra_data(tcp, info_buf, size, bpf_map_info_struct_size);
 
 print_bpf_map_info_end:
@@ -497,6 +525,19 @@ print_bpf_prog_info(struct tcb * const tcp, uint32_t bpf_fd,
 		saved->jited_prog_len = info.jited_prog_len;
 		saved->xlated_prog_len = info.xlated_prog_len;
 		saved->nr_map_ids = info.nr_map_ids;
+		saved->nr_jited_ksyms = info.nr_jited_ksyms;
+		saved->nr_jited_func_lens = info.nr_jited_func_lens;
+		saved->jited_ksyms = info.jited_ksyms;
+		saved->jited_func_lens = info.jited_func_lens;
+
+		saved->func_info_rec_size = info.func_info_rec_size;
+		saved->nr_func_info = info.nr_func_info;
+		saved->nr_line_info = info.nr_line_info;
+		saved->nr_jited_line_info = info.nr_jited_line_info;
+		saved->jited_line_info = info.jited_line_info;
+		saved->line_info_rec_size = info.line_info_rec_size;
+		saved->jited_line_info_rec_size = info.jited_line_info_rec_size;
+		saved->nr_prog_tags = info.nr_prog_tags;
 
 		return;
 	}
@@ -548,13 +589,107 @@ print_bpf_prog_info(struct tcb * const tcp, uint32_t bpf_fd,
 
 	/*
 	 * ifindex, netns_dev, and netns_ino fields were introduced
-	 * by Linux commit v4.16-rc1~123^2~227^2~5^2~2.
+	 * by Linux commit v4.16-rc1~123^2~227^2~5^2~2, and
+	 * gpl_compatible was added later by Linux commit
+	 * v4.18-rc1~114^2~376^2~6.
 	 */
 	if (len <= offsetof(struct bpf_prog_info_struct, ifindex))
 		goto print_bpf_prog_info_end;
 	PRINT_FIELD_IFINDEX(", ", info, ifindex);
+	tprintf(", gpl_compatible=%u", info.gpl_compatible);
 	PRINT_FIELD_DEV(", ", info, netns_dev);
 	PRINT_FIELD_U(", ", info, netns_ino);
+
+	/*
+	 * The next four fields were introduced by Linux commits
+	 * v4.18-rc1~114^2~148^2~3^2~6 and v4.18-rc1~114^2~148^2~3^2~2.
+	 */
+	if (len <= offsetof(struct bpf_prog_info_struct, nr_jited_ksyms))
+		goto print_bpf_prog_info_end;
+
+	tprints(", nr_jited_ksyms=");
+	if (saved->nr_jited_ksyms != info.nr_jited_ksyms)
+		tprintf("%" PRIu32 " => ", saved->nr_jited_ksyms);
+	tprintf("%" PRIu32, info.nr_jited_ksyms);
+
+	tprints(", nr_jited_func_lens=");
+	if (saved->nr_jited_func_lens != info.nr_jited_func_lens)
+		tprintf("%" PRIu32 " => ", saved->nr_jited_func_lens);
+	tprintf("%" PRIu32, info.nr_jited_func_lens);
+
+	tprints(", jited_ksyms=");
+	if (saved->jited_ksyms != info.jited_ksyms) {
+		printaddr64(saved->jited_ksyms);
+		tprints(" => ");
+	}
+	printaddr64(info.jited_ksyms);
+
+	tprints(", jited_func_lens=");
+	if (saved->jited_func_lens != info.jited_func_lens) {
+		printaddr64(saved->jited_func_lens);
+		tprints(" => ");
+	}
+	printaddr64(info.jited_func_lens);
+
+	/*
+	 * The next twelve fields were introduced by Linux commits
+	 * v5.0-rc1~129^2~209^2~16^2~8
+	 * v5.0-rc1~129^2~114^2~5^2~6
+	 * v5.0-rc1~129^2~114^2^2~2
+	 * v5.0-rc1~129^2~15^2~22
+	 */
+	if (len <= offsetof(struct bpf_prog_info_struct, btf_id))
+		goto print_bpf_prog_info_end;
+
+	PRINT_FIELD_U(", ", info, btf_id);
+
+	tprints(", func_info_rec_size=");
+	if (saved->func_info_rec_size != info.func_info_rec_size)
+		tprintf("%" PRIu32 " => ", saved->func_info_rec_size);
+	tprintf("%" PRIu32, info.func_info_rec_size);
+
+	PRINT_FIELD_ADDR64(", ", info, func_info);
+
+	tprints(", nr_func_info=");
+	if (saved->nr_func_info != info.nr_func_info)
+		tprintf("%" PRIu32 " => ", saved->nr_func_info);
+	tprintf("%" PRIu32, info.nr_func_info);
+
+	tprints(", nr_line_info=");
+	if (saved->nr_line_info != info.nr_line_info)
+		tprintf("%" PRIu32 " => ", saved->nr_line_info);
+	tprintf("%" PRIu32, info.nr_line_info);
+
+	PRINT_FIELD_ADDR64(", ", info, line_info);
+
+	tprints(", jited_line_info=");
+	if (saved->jited_line_info != info.jited_line_info) {
+		printaddr64(saved->jited_line_info);
+		tprints(" => ");
+	}
+	printaddr64(info.jited_line_info);
+
+	tprints(", nr_jited_line_info=");
+	if (saved->nr_jited_line_info != info.nr_jited_line_info)
+		tprintf("%" PRIu32 " => ", saved->nr_jited_line_info);
+	tprintf("%" PRIu32, info.nr_jited_line_info);
+
+	tprints(", line_info_rec_size=");
+	if (saved->line_info_rec_size != info.line_info_rec_size)
+		tprintf("%" PRIu32 " => ", saved->line_info_rec_size);
+	tprintf("%" PRIu32, info.line_info_rec_size);
+
+	tprints(", jited_line_info_rec_size=");
+	if (saved->jited_line_info_rec_size != info.jited_line_info_rec_size)
+		tprintf("%" PRIu32 " => ", saved->jited_line_info_rec_size);
+	tprintf("%" PRIu32, info.jited_line_info_rec_size);
+
+	tprints(", nr_prog_tags=");
+	if (saved->nr_prog_tags != info.nr_prog_tags)
+		tprintf("%" PRIu32 " => ", saved->nr_prog_tags);
+	tprintf("%" PRIu32, info.nr_prog_tags);
+
+	PRINT_FIELD_ADDR64(", ", info, prog_tags);
 
 	decode_attr_extra_data(tcp, info_buf, size, bpf_prog_info_struct_size);
 
@@ -707,6 +842,56 @@ BEGIN_BPF_CMD_DECODER(BPF_RAW_TRACEPOINT_OPEN)
 }
 END_BPF_CMD_DECODER(RVAL_DECODED)
 
+BEGIN_BPF_CMD_DECODER(BPF_BTF_LOAD)
+{
+	tprints("{btf=");
+	print_big_u64_addr(attr.btf);
+	printstrn(tcp, attr.btf, attr.btf_size);
+	PRINT_FIELD_ADDR64(", ", attr, btf_log_buf);
+	PRINT_FIELD_U(", ", attr, btf_size);
+	PRINT_FIELD_U(", ", attr, btf_log_size);
+	PRINT_FIELD_U(", ", attr, btf_log_level);
+}
+END_BPF_CMD_DECODER(RVAL_DECODED | RVAL_FD)
+
+BEGIN_BPF_CMD_DECODER(BPF_BTF_GET_FD_BY_ID)
+{
+	PRINT_FIELD_U("{", attr, btf_id);
+}
+END_BPF_CMD_DECODER(RVAL_DECODED | RVAL_FD)
+
+BEGIN_BPF_CMD_DECODER(BPF_TASK_FD_QUERY)
+{
+	if (entering(tcp)) {
+		set_tcb_priv_ulong(tcp, attr.buf_len);
+
+		PRINT_FIELD_U("{task_fd_query={", attr, pid);
+		PRINT_FIELD_FD(", ", attr, fd, tcp);
+		PRINT_FIELD_U(", ", attr, flags);
+		PRINT_FIELD_U(", ", attr, buf_len);
+
+		return 0;
+	}
+
+	unsigned int saved_buf_len = get_tcb_priv_ulong(tcp);
+
+	if (saved_buf_len != attr.buf_len)
+		tprintf(" => %u", attr.buf_len);
+
+	const unsigned int buf_len = MIN(saved_buf_len, attr.buf_len);
+	tprintf(", buf=");
+	print_big_u64_addr(attr.buf);
+	printstr_ex(tcp, attr.buf, buf_len, QUOTE_0_TERMINATED);
+	PRINT_FIELD_U(", ", attr, prog_id);
+	PRINT_FIELD_XVAL_INDEX(", ", attr, fd_type, bpf_task_fd_type,
+			       "BPF_FD_TYPE_???");
+	PRINT_FIELD_X(", ", attr, probe_offset);
+	PRINT_FIELD_X(", ", attr, probe_addr);
+
+	tprints("}");
+}
+END_BPF_CMD_DECODER(RVAL_DECODED)
+
 SYS_FUNC(bpf)
 {
 	static const bpf_cmd_decoder_t bpf_cmd_decoders[] = {
@@ -728,6 +913,10 @@ SYS_FUNC(bpf)
 		BPF_CMD_ENTRY(BPF_OBJ_GET_INFO_BY_FD),
 		BPF_CMD_ENTRY(BPF_PROG_QUERY),
 		BPF_CMD_ENTRY(BPF_RAW_TRACEPOINT_OPEN),
+		BPF_CMD_ENTRY(BPF_BTF_LOAD),
+		BPF_CMD_ENTRY(BPF_BTF_GET_FD_BY_ID),
+		BPF_CMD_ENTRY(BPF_TASK_FD_QUERY),
+		BPF_CMD_ENTRY(BPF_MAP_LOOKUP_AND_DELETE_ELEM),
 	};
 
 	const unsigned int cmd = tcp->u_arg[0];

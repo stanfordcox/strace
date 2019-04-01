@@ -3,30 +3,10 @@
  * Copyright (c) 1993 Branko Lankester <branko@hacktic.nl>
  * Copyright (c) 1993, 1994, 1995, 1996 Rick Sladkey <jrs@world.std.com>
  * Copyright (c) 1996-2000 Wichert Akkerman <wichert@cistron.nl>
- * Copyright (c) 1999-2018 The strace developers.
+ * Copyright (c) 1999-2019 The strace developers.
  * All rights reserved.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- * 3. The name of the author may not be used to endorse or promote products
- *    derived from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
- * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
- * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
- * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: LGPL-2.1-or-later
  */
 
 #include "defs.h"
@@ -85,8 +65,8 @@
 #include "xlat/inet_protocols.h"
 
 #define XLAT_MACROS_ONLY
-# include "xlat/addrfams.h"
-# include "xlat/ethernet_protocols.h"
+#include "xlat/addrfams.h"
+#include "xlat/ethernet_protocols.h"
 #undef XLAT_MACROS_ONLY
 #include "xlat/ax25_protocols.h"
 #include "xlat/irda_protocols.h"
@@ -148,8 +128,9 @@ SYS_FUNC(socket)
 
 	case AF_AX25:
 		/* Those are not available in public headers.  */
-		printxval_searchn_ex(ARRSZ_PAIR(ax25_protocols), tcp->u_arg[2],
-				     "AX25_P_???", XLAT_STYLE_VERBOSE);
+		printxval_searchn_ex(ARRSZ_PAIR(ax25_protocols) - 1,
+				     tcp->u_arg[2], "AX25_P_???",
+				     XLAT_STYLE_VERBOSE);
 		break;
 
 	case AF_NETLINK:
@@ -671,6 +652,23 @@ print_get_ucred(struct tcb *const tcp, const kernel_ulong_t addr,
 	tprints("}");
 }
 
+static void
+print_get_error(struct tcb *const tcp, const kernel_ulong_t addr,
+		unsigned int len)
+{
+	unsigned int err;
+
+	if (len > sizeof(err))
+		err = sizeof(err);
+
+	if (umoven_or_printaddr(tcp, addr, len, &err))
+		return;
+
+	tprints("[");
+	print_xlat_ex(err, err_name(err), XLAT_STYLE_FMT_U);
+	tprints("]");
+}
+
 #ifdef PACKET_STATISTICS
 static void
 print_tpacket_stats(struct tcb *const tcp, const kernel_ulong_t addr,
@@ -786,6 +784,9 @@ print_getsockopt(struct tcb *const tcp, const unsigned int level,
 			else
 				printaddr(addr);
 			return;
+		case SO_ERROR:
+			print_get_error(tcp, addr, rlen);
+			return;
 		}
 		break;
 
@@ -897,8 +898,8 @@ print_mreq(struct tcb *const tcp, const kernel_ulong_t addr,
 	if (len < (int) sizeof(mreq)) {
 		printaddr(addr);
 	} else if (!umove_or_printaddr(tcp, addr, &mreq)) {
-		PRINT_FIELD_INET4_ADDR("{", mreq, imr_multiaddr);
-		PRINT_FIELD_INET4_ADDR(", ", mreq, imr_interface);
+		PRINT_FIELD_INET_ADDR("{", mreq, imr_multiaddr, AF_INET);
+		PRINT_FIELD_INET_ADDR(", ", mreq, imr_interface, AF_INET);
 		tprints("}");
 	}
 }
@@ -952,17 +953,13 @@ print_packet_mreq(struct tcb *const tcp, const kernel_ulong_t addr, const int le
 	    umove(tcp, addr, &mreq) < 0) {
 		printaddr(addr);
 	} else {
-		unsigned int i;
-
 		PRINT_FIELD_IFINDEX("{", mreq, mr_ifindex);
 		PRINT_FIELD_XVAL(", ", mreq, mr_type, packet_mreq_type,
 				 "PACKET_MR_???");
 		PRINT_FIELD_U(", ", mreq, mr_alen);
-		tprints(", mr_address=");
-		if (mreq.mr_alen > ARRAY_SIZE(mreq.mr_address))
-			mreq.mr_alen = ARRAY_SIZE(mreq.mr_address);
-		for (i = 0; i < mreq.mr_alen; ++i)
-			tprintf("%02x", mreq.mr_address[i]);
+		PRINT_FIELD_MAC_SZ(", ", mreq, mr_address,
+				   (mreq.mr_alen > sizeof(mreq.mr_address)
+				    ? sizeof(mreq.mr_address) : mreq.mr_alen));
 		tprints("}");
 	}
 }

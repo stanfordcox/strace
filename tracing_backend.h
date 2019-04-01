@@ -60,7 +60,7 @@ struct tracing_backend {
 	void (*startup_child) (char **argv);
 	void (*attach_tcb) (struct tcb *tcp);
 	void (*detach) (struct tcb *tcp);
-	void (*cleanup) (void);
+	void (*cleanup) (int sig);
 
 	/*
 	 * Group of functions related to the main tracing loop.
@@ -199,10 +199,10 @@ detach(struct tcb *tcp)
 }
 
 static inline void
-cleanup(void)
+cleanup(int fatal_sig)
 {
 	if (cur_tracing_backend->cleanup)
-		cur_tracing_backend->cleanup();
+		cur_tracing_backend->cleanup(fatal_sig);
 }
 
 static inline const struct tcb_wait_data *

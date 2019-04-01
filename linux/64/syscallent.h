@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2015-2019 The strace developers.
+ * All rights reserved.
+ *
+ * SPDX-License-Identifier: LGPL-2.1-or-later
+ */
+
 [  0] = { 2,	TM,		SEN(io_setup),			"io_setup"		},
 [  1] = { 1,	TM,		SEN(io_destroy),		"io_destroy"		},
 [  2] = { 3,	0,		SEN(io_submit),			"io_submit"		},
@@ -276,3 +283,5 @@
 [290] = { 1,	0,		SEN(pkey_free),			"pkey_free"		},
 [291] = { 5,	TD|TF|TSTA,	SEN(statx),			"statx"			},
 [292] = { 6,	0,		SEN(io_pgetevents),		"io_pgetevents"		},
+[293] = { 4,	0,		SEN(rseq),			"rseq"			},
+[294] = { 5,	TD,		SEN(kexec_file_load),		"kexec_file_load"	},

@@ -4,30 +4,10 @@
 # Copyright (c) 2006-2016 Dmitry V. Levin <ldv@altlinux.org>
 # Copyright (c) 2008-2015 Mike Frysinger <vapier@gentoo.org>
 # Copyright (c) 2015 Elvira Khabirova <lineprinter0@gmail.com>
-# Copyright (c) 2002-2018 The strace developers.
+# Copyright (c) 2002-2019 The strace developers.
 # All rights reserved.
 #
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions
-# are met:
-# 1. Redistributions of source code must retain the above copyright
-#    notice, this list of conditions and the following disclaimer.
-# 2. Redistributions in binary form must reproduce the above copyright
-#    notice, this list of conditions and the following disclaimer in the
-#    documentation and/or other materials provided with the distribution.
-# 3. The name of the author may not be used to endorse or promote products
-#    derived from this software without specific prior written permission.
-#
-# THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
-# IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
-# OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
-# IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
-# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
-# NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-# THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# SPDX-License-Identifier: LGPL-2.1-or-later
 
 if HAVE_M32_RUNTIME
 TESTS_M32 = tests-m32
@@ -158,13 +138,15 @@ strace_SOURCES =	\
 	fetch_struct_xfs_quotastat.c \
 	file_handle.c	\
 	file_ioctl.c	\
-	filter_qualify.c \
 	filter.h	\
+	filter_qualify.c \
 	flock.c		\
 	flock.h		\
 	fs_x_ioctl.c	\
 	futex.c		\
 	gcc_compat.h	\
+	get_personality.c \
+	get_personality.h \
 	get_robust_list.c \
 	getcpu.c	\
 	getcwd.c	\
@@ -223,10 +205,9 @@ strace_SOURCES =	\
 	netlink.c       \
 	netlink.h	\
 	netlink_crypto.c \
+	netlink_inet_diag.c \
 	netlink_kobject_uevent.c \
 	netlink_kobject_uevent.h \
-	netlink_sock_diag.h \
-	netlink_inet_diag.c \
 	netlink_netfilter.c \
 	netlink_netlink_diag.c \
 	netlink_packet_diag.c \
@@ -235,6 +216,7 @@ strace_SOURCES =	\
 	netlink_selinux.c \
 	netlink_smc_diag.c \
 	netlink_sock_diag.c \
+	netlink_sock_diag.h \
 	netlink_unix_diag.c \
 	nlattr.c	\
 	nlattr.h	\
@@ -257,10 +239,11 @@ strace_SOURCES =	\
 	prctl.c		\
 	print_aio_sigset.c \
 	print_dev_t.c	\
-	print_group_req.c \
 	print_fields.h	\
+	print_group_req.c \
 	print_ifindex.c	\
 	print_instruction_pointer.c \
+	print_kernel_version.c \
 	print_mac.c	\
 	print_mq_attr.c	\
 	print_msgbuf.c	\
@@ -272,6 +255,7 @@ strace_SOURCES =	\
 	print_timespec.c \
 	print_timeval.c	\
 	print_timex.c	\
+	print_utils.h	\
 	printmode.c	\
 	printrusage.c	\
 	printsiginfo.c	\
@@ -282,6 +266,8 @@ strace_SOURCES =	\
 	ptrace.h	\
 	ptrace_backend.c \
 	ptrace_backend.h \
+	ptrace_syscall_info.c \
+	ptrace_syscall_info.h \
 	quota.c		\
 	random_ioctl.c	\
 	readahead.c	\
@@ -336,8 +322,8 @@ strace_SOURCES =	\
 	statx.c		\
 	statx.h		\
 	strace.c	\
-	string_to_uint.h \
 	string_to_uint.c \
+	string_to_uint.h \
 	swapon.c	\
 	syscall.c	\
 	sysctl.c	\
@@ -368,6 +354,7 @@ strace_SOURCES =	\
 	utimes.c	\
 	v4l2.c		\
 	wait.c		\
+	wait.h		\
 	xattr.c		\
 	xfs_quota_stat.h \
 	xlat.c		\
@@ -433,6 +420,7 @@ EXTRA_DIST =				\
 	CREDITS				\
 	ChangeLog			\
 	ChangeLog-CVS			\
+	LGPL-2.1-or-later		\
 	README-configure		\
 	README-linux-ptrace		\
 	debian/changelog		\
@@ -461,6 +449,7 @@ EXTRA_DIST =				\
 	linux/64/ioctls_inc.h		\
 	linux/64/syscallent.h		\
 	linux/aarch64/arch_defs_.h	\
+	linux/aarch64/arch_get_personality.c \
 	linux/aarch64/arch_regs.c	\
 	linux/aarch64/arch_sigreturn.c	\
 	linux/aarch64/get_error.c	\
@@ -549,6 +538,7 @@ EXTRA_DIST =				\
 	linux/bfin/set_scno.c		\
 	linux/bfin/syscallent.h		\
 	linux/bfin/userent.h		\
+	linux/check_scno.c		\
 	linux/dummy.h			\
 	linux/errnoent.h		\
 	linux/getregs_old.h		\
@@ -568,8 +558,9 @@ EXTRA_DIST =				\
 	linux/hppa/set_scno.c		\
 	linux/hppa/signalent.h		\
 	linux/hppa/syscallent.h		\
-	linux/i386/arch_kvm.c		\
+	linux/hppa/userent.h		\
 	linux/i386/arch_defs_.h		\
+	linux/i386/arch_kvm.c		\
 	linux/i386/arch_regs.c		\
 	linux/i386/arch_rt_sigframe.c	\
 	linux/i386/arch_sigreturn.c	\
@@ -707,6 +698,7 @@ EXTRA_DIST =				\
 	linux/powerpc/syscallent.h	\
 	linux/powerpc/userent.h		\
 	linux/powerpc64/arch_defs_.h	\
+	linux/powerpc64/arch_get_personality.c \
 	linux/powerpc64/arch_regs.c	\
 	linux/powerpc64/arch_rt_sigframe.c	\
 	linux/powerpc64/arch_sigreturn.c	\
@@ -730,6 +722,7 @@ EXTRA_DIST =				\
 	linux/ptrace_pokeuser.c		\
 	linux/raw_syscall.h		\
 	linux/riscv/arch_defs_.h	\
+	linux/riscv/arch_get_personality.c \
 	linux/riscv/arch_regs.c		\
 	linux/riscv/get_error.c		\
 	linux/riscv/get_scno.c		\
@@ -761,6 +754,7 @@ EXTRA_DIST =				\
 	linux/s390/userent0.h		\
 	linux/s390/userent1.h		\
 	linux/s390x/arch_defs_.h	\
+	linux/s390x/arch_get_personality.c \
 	linux/s390x/arch_regs.c		\
 	linux/s390x/arch_sigreturn.c	\
 	linux/s390x/get_error.c		\
@@ -808,7 +802,7 @@ EXTRA_DIST =				\
 	linux/sh64/syscallent.h		\
 	linux/sh64/userent.h		\
 	linux/shuffle_scno.c		\
-	linux/signal.h.in 		\
+	linux/signal.h.in		\
 	linux/signalent.h		\
 	linux/smc_diag.h		\
 	linux/sock_diag.h		\
@@ -830,6 +824,7 @@ EXTRA_DIST =				\
 	linux/sparc/syscallent.h	\
 	linux/sparc/userent.h		\
 	linux/sparc64/arch_defs_.h	\
+	linux/sparc64/arch_get_personality.c \
 	linux/sparc64/arch_getrval2.c	\
 	linux/sparc64/arch_regs.c	\
 	linux/sparc64/arch_rt_sigframe.c	\
@@ -853,6 +848,7 @@ EXTRA_DIST =				\
 	linux/subcall.h			\
 	linux/syscall.h			\
 	linux/tile/arch_defs_.h		\
+	linux/tile/arch_get_personality.c \
 	linux/tile/arch_regs.c		\
 	linux/tile/arch_sigreturn.c	\
 	linux/tile/get_error.c		\
@@ -873,11 +869,13 @@ EXTRA_DIST =				\
 	linux/userent.h			\
 	linux/userent0.h		\
 	linux/x32/arch_defs_.h		\
+	linux/x32/arch_get_personality.c \
 	linux/x32/arch_kvm.c		\
 	linux/x32/arch_regs.c		\
 	linux/x32/arch_regs.h		\
 	linux/x32/arch_rt_sigframe.c	\
 	linux/x32/arch_sigreturn.c	\
+	linux/x32/check_scno.c		\
 	linux/x32/get_error.c		\
 	linux/x32/get_scno.c		\
 	linux/x32/get_syscall_args.c	\
@@ -895,6 +893,7 @@ EXTRA_DIST =				\
 	linux/x32/syscallent1.h		\
 	linux/x32/userent.h		\
 	linux/x86_64/arch_defs_.h	\
+	linux/x86_64/arch_get_personality.c \
 	linux/x86_64/arch_kvm.c		\
 	linux/x86_64/arch_regs.c	\
 	linux/x86_64/arch_regs.h	\
@@ -963,6 +962,7 @@ $(srcdir)/.version:
 	$(AM_V_GEN)echo $(VERSION) > $@-t && mv $@-t $@
 
 bpf_attr_check.c: $(srcdir)/bpf_attr.h $(srcdir)/gen_bpf_attr_check.sh
+	D="$(D)" \
 	$(srcdir)/gen_bpf_attr_check.sh $< > $@-t && mv $@-t $@
 
 strace_SOURCES_c = \
@@ -982,6 +982,7 @@ syscallent_files = $(filter $(syscallent_patterns),$(EXTRA_DIST))
 
 sen.h: $(patsubst %,$(srcdir)/%,$(syscallent_files))
 	for f in $^; do cat -- $$f; done | \
+		D="$(D)" \
 		$(srcdir)/generate_sen.sh > $@
 
 dist-hook:
@@ -1073,6 +1074,7 @@ libmpers_CFLAGS = $(strace_CFLAGS)
 
 mpers-m%.stamp: $(srcdir_mpers_source_files) | printers.h
 	for f in $^; do \
+		D="$(D)" \
 		READELF="$(READELF)" \
 		CC="$(CC)" \
 		CFLAGS="$(mpers_sh_opts) -DMPERS_IS_$(mpers_NAME)" \
@@ -1191,6 +1193,8 @@ $(srcdir)/CREDITS: $(srcdir)/CREDITS.in $(srcdir)/.mailmap \
 		   $(srcdir)/Makefile.in $(srcdir)/.version
 	$(AM_V_GEN)							\
 	(								\
+	  D="$(D)";							\
+	  export D;							\
 	  cd $(srcdir);							\
 	  sed '/^##/,$$d' CREDITS.in;					\
 	  sed -n '1,/^##>/d; s/   */\t/; s/^./&/p' CREDITS.in		\

@@ -2,30 +2,10 @@
  * Copyright (c) 2014 Philippe De Muyter <phdm@macqel.be>
  * Copyright (c) 2014 William Manley <will@williammanley.net>
  * Copyright (c) 2011 Peter Zotov <whitequark@whitequark.org>
- * Copyright (c) 2014-2018 The strace developers.
+ * Copyright (c) 2014-2019 The strace developers.
  * All rights reserved.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- * 3. The name of the author may not be used to endorse or promote products
- *    derived from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
- * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
- * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
- * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: LGPL-2.1-or-later
  */
 
 #include "defs.h"
@@ -62,6 +42,7 @@ typedef struct v4l2_standard struct_v4l2_standard;
 #include MPERS_DEFS
 
 #include "print_fields.h"
+#include "print_utils.h"
 #include "xstring.h"
 
 /* v4l2_fourcc_be was added by Linux commit v3.18-rc1~101^2^2~127 */
@@ -90,6 +71,7 @@ print_pixelformat(uint32_t fourcc, const struct xlat *xlat)
 	unsigned int i;
 
 	tprints("v4l2_fourcc(");
+	/* Generic char array printing routine.  */
 	for (i = 0; i < ARRAY_SIZE(a); ++i) {
 		unsigned char c = a[i];
 
@@ -104,7 +86,7 @@ print_pixelformat(uint32_t fourcc, const struct xlat *xlat)
 				'\0'
 			};
 			tprints(sym);
-		} else if (c >= ' ' && c <= 0x7e) {
+		} else if (is_print(c)) {
 			char sym[] = {
 				'\'',
 				c,
@@ -114,12 +96,7 @@ print_pixelformat(uint32_t fourcc, const struct xlat *xlat)
 			tprints(sym);
 		} else {
 			char hex[] = {
-				'\'',
-				'\\',
-				'x',
-				"0123456789abcdef"[c >> 4],
-				"0123456789abcdef"[c & 0xf],
-				'\'',
+				BYTE_HEX_CHARS_PRINTF_QUOTED(c),
 				'\0'
 			};
 			tprints(hex);
@@ -334,10 +311,10 @@ print_v4l2_format_fmt(struct tcb *const tcp, const char *prefix,
 		tprints(prefix);
 		tprints("fmt.sdr={pixelformat=");
 		print_pixelformat(f->fmt.sdr.pixelformat, v4l2_sdr_fmts);
-#ifdef HAVE_STRUCT_V4L2_SDR_FORMAT_BUFFERSIZE
+# ifdef HAVE_STRUCT_V4L2_SDR_FORMAT_BUFFERSIZE
 		tprintf(", buffersize=%u",
 			f->fmt.sdr.buffersize);
-#endif
+# endif
 		tprints("}");
 		break;
 #endif

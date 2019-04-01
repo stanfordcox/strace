@@ -1,29 +1,9 @@
 #!/bin/sh
 # Copyright (c) 2015 Dmitry V. Levin <ldv@altlinux.org>
-# Copyright (c) 2015-2018 The strace developers.
+# Copyright (c) 2015-2019 The strace developers.
 # All rights reserved.
 #
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions
-# are met:
-# 1. Redistributions of source code must retain the above copyright
-#    notice, this list of conditions and the following disclaimer.
-# 2. Redistributions in binary form must reproduce the above copyright
-#    notice, this list of conditions and the following disclaimer in the
-#    documentation and/or other materials provided with the distribution.
-# 3. The name of the author may not be used to endorse or promote products
-#    derived from this software without specific prior written permission.
-#
-# THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
-# IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
-# OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
-# IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
-# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
-# NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
-# THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# SPDX-License-Identifier: LGPL-2.1-or-later
 
 set -efu
 
@@ -124,6 +104,7 @@ process_file()
 
 	# Common code for every processed file.
 	cat > "$tmpdir"/printents.c <<__EOF__
+#include <linux/compiler_attributes.h>
 #include <asm/termbits.h>
 #include <asm/ioctl.h>
 #include <linux/types.h>
@@ -184,7 +165,7 @@ __EOF__
 		*asm/core_*.h)
 			return 0 # false positives
 			;;
-		*asm/ioctls.h)
+		*asm*/ioctls.h)
 			cat <<'__EOF__'
 #include <asm/termios.h>
 #include <linux/serial.h>
@@ -404,7 +385,7 @@ s/^\([[:space:]]\+[^),]\+)\),$/\1/' >> "$tmpdir/$f"
 			arm_list='KVM_ARM_[A-Z_]+'
 			ppc_list='KVM_ALLOCATE_RMA|KVM_CREATE_SPAPR_TCE|KVM_CREATE_SPAPR_TCE_64|KVM_PPC_[A-Z1-9_]+'
 			s390_list='KVM_S390_[A-Z_]+'
-			x86_list='KVM_GET_CPUID2|KVM_GET_DEBUGREGS|KVM_GET_EMULATED_CPUID|KVM_GET_LAPIC|KVM_GET_MSRS|KVM_GET_MSR_FEATURE_INDEX_LIST|KVM_GET_MSR_INDEX_LIST|KVM_GET_NESTED_STATE|KVM_GET_PIT|KVM_GET_PIT2|KVM_GET_SUPPORTED_CPUID|KVM_GET_VCPU_EVENTS|KVM_GET_XCRS|KVM_GET_XSAVE|KVM_HYPERV_EVENTFD|KVM_SET_CPUID|KVM_SET_CPUID2|KVM_SET_DEBUGREGS|KVM_SET_LAPIC|KVM_SET_MEMORY_ALIAS|KVM_SET_MSRS|KVM_SET_NESTED_STATE|KVM_SET_PIT|KVM_SET_PIT2|KVM_SET_VCPU_EVENTS|KVM_SET_XCRS|KVM_SET_XSAVE|KVM_XEN_HVM_CONFIG|KVM_X86_[A-Z_]+'
+			x86_list='KVM_GET_CPUID2|KVM_GET_DEBUGREGS|KVM_GET_EMULATED_CPUID|KVM_GET_LAPIC|KVM_GET_MSRS|KVM_GET_MSR_FEATURE_INDEX_LIST|KVM_GET_MSR_INDEX_LIST|KVM_GET_NESTED_STATE|KVM_GET_PIT|KVM_GET_PIT2|KVM_GET_SUPPORTED_CPUID|KVM_GET_SUPPORTED_HV_CPUID|KVM_GET_VCPU_EVENTS|KVM_GET_XCRS|KVM_GET_XSAVE|KVM_HYPERV_EVENTFD|KVM_SET_CPUID|KVM_SET_CPUID2|KVM_SET_DEBUGREGS|KVM_SET_LAPIC|KVM_SET_MEMORY_ALIAS|KVM_SET_MSRS|KVM_SET_NESTED_STATE|KVM_SET_PIT|KVM_SET_PIT2|KVM_SET_VCPU_EVENTS|KVM_SET_XCRS|KVM_SET_XSAVE|KVM_XEN_HVM_CONFIG|KVM_X86_[A-Z_]+'
 			case "$uname_m" in
 				aarch64|arm*) list="$ppc_list|$s390_list|$x86_list" ;;
 				ppc*) list="$arm_list|$s390_list|$x86_list" ;;

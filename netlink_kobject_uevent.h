@@ -1,5 +1,12 @@
+/*
+ * Copyright (c) 2018 The strace developers.
+ * All rights reserved.
+ *
+ * SPDX-License-Identifier: LGPL-2.1-or-later
+ */
+
 #ifndef STRACE_NETLINK_KOBJECT_UEVENT_H
-#define STRACE_NETLINK_KOBJECT_UEVENT_H
+# define STRACE_NETLINK_KOBJECT_UEVENT_H
 
 struct udev_monitor_netlink_header {
 	/* "libudev" prefix to distinguish libudev and kernel messages */

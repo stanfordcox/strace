@@ -1,30 +1,10 @@
 /*
  * Check bpf(BPF_OBJ_GET_INFO_BY_FD) decoding.
  *
- * Copyright (c) 2018 The strace developers.
+ * Copyright (c) 2018-2019 The strace developers.
  * All rights reserved.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- * 3. The name of the author may not be used to endorse or promote products
- *    derived from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
- * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
- * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
- * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 #include "tests.h"
@@ -38,6 +18,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <sys/sysmacros.h>
 #include <asm/unistd.h>
@@ -103,6 +84,10 @@ print_map_create(void *attr_void, size_t size, long rc)
 		printf(", map_name=\"test_map\"");
 	if (size > offsetof(struct BPF_MAP_CREATE_struct, map_ifindex))
 		printf(", map_ifindex=0");
+	if (size > offsetof(struct BPF_MAP_CREATE_struct, btf_fd)) {
+		printf(", btf_fd=0</dev/null>"
+		       ", btf_key_type_id=0, btf_value_type_id=0");
+	}
 	printf("}, %zu) = ", size);
 	if (rc >= 0)
 		printf("%ld<anon_inode:bpf-map>\n", rc);
@@ -207,6 +192,20 @@ print_prog_load(void *attr_void, size_t size, long rc)
 		printf(", prog_ifindex=0");
 	if (size > offsetof(struct BPF_PROG_LOAD_struct, expected_attach_type))
 		printf(", expected_attach_type=BPF_CGROUP_INET_INGRESS");
+	if (size > offsetof(struct BPF_PROG_LOAD_struct, prog_btf_fd))
+		printf(", prog_btf_fd=0</dev/null>");
+	if (size > offsetof(struct BPF_PROG_LOAD_struct, func_info_rec_size))
+		printf(", func_info_rec_size=0");
+	if (size > offsetof(struct BPF_PROG_LOAD_struct, func_info))
+		printf(", func_info=NULL");
+	if (size > offsetof(struct BPF_PROG_LOAD_struct, func_info_cnt))
+		printf(", func_info_cnt=0");
+	if (size > offsetof(struct BPF_PROG_LOAD_struct, line_info_rec_size))
+		printf(", line_info_rec_size=0");
+	if (size > offsetof(struct BPF_PROG_LOAD_struct, line_info))
+		printf(", line_info=NULL");
+	if (size > offsetof(struct BPF_PROG_LOAD_struct, line_info_cnt))
+		printf(", line_info_cnt=0");
 	printf("}, %zu) = ", size);
 	if (rc >= 0)
 		printf("%ld<anon_inode:bpf-prog>\n", rc);
@@ -293,14 +292,15 @@ main(void)
 	 * This has to be a macro, otherwise the compiler complains that
 	 * initializer element is not constant.
 	 */
-	#define  MAP_INFO_SZ (sizeof(*map_info) + 64)
-	struct bpf_map_info_struct *map_info = calloc(1, MAP_INFO_SZ);
+#define MAP_INFO_SZ (sizeof(*map_info) + 64)
+	struct bpf_map_info_struct *map_info = tail_alloc(MAP_INFO_SZ);
 	struct BPF_OBJ_GET_INFO_BY_FD_struct bpf_map_get_info_attr = {
 		.bpf_fd   = map_fd,
 		.info_len = MAP_INFO_SZ,
 		.info     = (uintptr_t) map_info,
 	};
 
+	memset(map_info, 0, MAP_INFO_SZ);
 	int ret = sys_bpf(BPF_OBJ_GET_INFO_BY_FD, &bpf_map_get_info_attr,
 			  sizeof(bpf_map_get_info_attr));
 	if (ret < 0)
@@ -338,6 +338,15 @@ main(void)
 	if (bpf_map_get_info_attr.info_len >
 	    offsetof(struct bpf_map_info_struct, netns_ino))
 		printf(", netns_ino=%" PRIu64, map_info->netns_ino);
+	if (bpf_map_get_info_attr.info_len >
+	    offsetof(struct bpf_map_info_struct, btf_id))
+		PRINT_FIELD_U(", ", *map_info, btf_id);
+	if (bpf_map_get_info_attr.info_len >
+	    offsetof(struct bpf_map_info_struct, btf_key_type_id))
+		PRINT_FIELD_U(", ", *map_info, btf_key_type_id);
+	if (bpf_map_get_info_attr.info_len >
+	    offsetof(struct bpf_map_info_struct, btf_value_type_id))
+		PRINT_FIELD_U(", ", *map_info, btf_value_type_id);
 	printf("}");
 #else /* !VERBOSE */
 	printf("%p", map_info);
@@ -349,8 +358,8 @@ main(void)
 	 * This has to be a macro, otherwise the compiler complains that
 	 * initializer element is not constant.
 	 */
-	#define  PROG_INFO_SZ (sizeof(*prog_info) + 64)
-	struct bpf_prog_info_struct *prog_info = calloc(1, PROG_INFO_SZ);
+# define PROG_INFO_SZ (sizeof(*prog_info) + 64)
+	struct bpf_prog_info_struct *prog_info = tail_alloc(PROG_INFO_SZ);
 	struct bpf_insn *xlated_prog = tail_alloc(sizeof(*xlated_prog) * 42);
 	uint32_t *map_ids = tail_alloc(sizeof(*map_ids) * 2);
 	struct BPF_OBJ_GET_INFO_BY_FD_struct bpf_prog_get_info_attr = {
@@ -360,8 +369,20 @@ main(void)
 	};
 	size_t old_prog_info_len = PROG_INFO_SZ;
 
+	memset(prog_info, 0, PROG_INFO_SZ);
 	for (unsigned int i = 0; i < 4; i++) {
 		prog_info->jited_prog_len = 0;
+		prog_info->nr_jited_ksyms = 0;
+		prog_info->nr_jited_func_lens = 0;
+		prog_info->func_info_rec_size = 0;
+		prog_info->nr_func_info = 0;
+		prog_info->nr_line_info = 0;
+		prog_info->nr_jited_line_info = 0;
+		prog_info->jited_line_info = 0;
+		prog_info->line_info_rec_size = 0;
+		prog_info->jited_line_info_rec_size = 0;
+		prog_info->nr_prog_tags = 0;
+		memset(prog_info + 1, 0, PROG_INFO_SZ - sizeof(*prog_info));
 		switch (i) {
 		case 1:
 			prog_info->xlated_prog_insns =
@@ -477,6 +498,9 @@ main(void)
 		    offsetof(struct bpf_prog_info_struct, ifindex))
 			printf(", ifindex=%u", prog_info->ifindex);
 		if (bpf_prog_get_info_attr.info_len >
+		    offsetofend(struct bpf_prog_info_struct, ifindex))
+			printf(", gpl_compatible=%u", prog_info->gpl_compatible);
+		if (bpf_prog_get_info_attr.info_len >
 		    offsetof(struct bpf_prog_info_struct, netns_dev))
 			printf(", netns_dev=makedev(%#x, %#x)",
 			       major(prog_info->netns_dev),
@@ -484,6 +508,83 @@ main(void)
 		if (bpf_prog_get_info_attr.info_len >
 		    offsetof(struct bpf_prog_info_struct, netns_ino))
 			printf(", netns_ino=%" PRIu64, prog_info->netns_ino);
+
+		if (bpf_prog_get_info_attr.info_len >
+		    offsetof(struct bpf_prog_info_struct, nr_jited_ksyms)) {
+			printf(", nr_jited_ksyms=0");
+			if (prog_info->nr_jited_ksyms)
+				printf(" => %u", prog_info->nr_jited_ksyms);
+		}
+		if (bpf_prog_get_info_attr.info_len >
+		    offsetof(struct bpf_prog_info_struct, nr_jited_func_lens)) {
+			printf(", nr_jited_func_lens=0");
+			if (prog_info->nr_jited_func_lens)
+				printf(" => %u", prog_info->nr_jited_func_lens);
+		}
+		if (bpf_prog_get_info_attr.info_len >
+		    offsetof(struct bpf_prog_info_struct, jited_ksyms))
+			printf(", jited_ksyms=NULL");
+		if (bpf_prog_get_info_attr.info_len >
+		    offsetof(struct bpf_prog_info_struct, jited_func_lens))
+			printf(", jited_func_lens=NULL");
+
+		if (bpf_prog_get_info_attr.info_len >
+		    offsetof(struct bpf_prog_info_struct, btf_id))
+			PRINT_FIELD_U(", ", *prog_info, btf_id);
+		if (bpf_prog_get_info_attr.info_len >
+		    offsetof(struct bpf_prog_info_struct, func_info_rec_size)) {
+			printf(", func_info_rec_size=0");
+			if (prog_info->func_info_rec_size)
+				printf(" => %u", prog_info->func_info_rec_size);
+		}
+		if (bpf_prog_get_info_attr.info_len >
+		    offsetof(struct bpf_prog_info_struct, func_info))
+			printf(", func_info=NULL");
+		if (bpf_prog_get_info_attr.info_len >
+		    offsetof(struct bpf_prog_info_struct, nr_func_info)) {
+			printf(", nr_func_info=0");
+			if (prog_info->nr_func_info)
+				printf(" => %u", prog_info->nr_func_info);
+		}
+		if (bpf_prog_get_info_attr.info_len >
+		    offsetof(struct bpf_prog_info_struct, nr_line_info)) {
+			printf(", nr_line_info=0");
+			if (prog_info->nr_line_info)
+				printf(" => %u", prog_info->nr_line_info);
+		}
+		if (bpf_prog_get_info_attr.info_len >
+		    offsetof(struct bpf_prog_info_struct, line_info))
+			printf(", line_info=NULL");
+		if (bpf_prog_get_info_attr.info_len >
+		    offsetof(struct bpf_prog_info_struct, jited_line_info))
+			printf(", jited_line_info=NULL");
+		if (bpf_prog_get_info_attr.info_len >
+		    offsetof(struct bpf_prog_info_struct, nr_jited_line_info)) {
+			printf(", nr_jited_line_info=0");
+			if (prog_info->nr_jited_line_info)
+				printf(" => %u", prog_info->nr_jited_line_info);
+		}
+		if (bpf_prog_get_info_attr.info_len >
+		    offsetof(struct bpf_prog_info_struct, line_info_rec_size)) {
+			printf(", line_info_rec_size=0");
+			if (prog_info->line_info_rec_size)
+				printf(" => %u", prog_info->line_info_rec_size);
+		}
+		if (bpf_prog_get_info_attr.info_len >
+		    offsetof(struct bpf_prog_info_struct, jited_line_info_rec_size)) {
+			printf(", jited_line_info_rec_size=0");
+			if (prog_info->jited_line_info_rec_size)
+				printf(" => %u", prog_info->jited_line_info_rec_size);
+		}
+		if (bpf_prog_get_info_attr.info_len >
+		    offsetof(struct bpf_prog_info_struct, nr_prog_tags)) {
+			printf(", nr_prog_tags=0");
+			if (prog_info->nr_prog_tags)
+				printf(" => %u", prog_info->nr_prog_tags);
+		}
+		if (bpf_prog_get_info_attr.info_len >
+		    offsetof(struct bpf_prog_info_struct, prog_tags))
+			printf(", prog_tags=NULL");
 
 		printf("}");
 # else /* !VERBOSE */

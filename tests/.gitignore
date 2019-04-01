@@ -89,7 +89,13 @@ finit_module
 flock
 fork-f
 fstat
+fstat-Xabbrev
+fstat-Xraw
+fstat-Xverbose
 fstat64
+fstat64-Xabbrev
+fstat64-Xraw
+fstat64-Xverbose
 fstatat64
 fstatfs
 fstatfs64
@@ -143,9 +149,9 @@ ioctl_block
 ioctl_dm
 ioctl_dm-v
 ioctl_evdev
-ioctl_evdev-v
 ioctl_evdev-success
 ioctl_evdev-success-v
+ioctl_evdev-v
 ioctl_inotify
 ioctl_kvm_run
 ioctl_kvm_run-v
@@ -171,6 +177,9 @@ ioctl_v4l2
 ioperm
 iopl
 ioprio
+ioprio-Xabbrev
+ioprio-Xraw
+ioprio-Xverbose
 ip_mreq
 ipc
 ipc_msg
@@ -193,6 +202,10 @@ is_linux_mips_n64
 kcmp
 kcmp-y
 kern_features
+kernel_version
+kernel_version-Xabbrev
+kernel_version-Xraw
+kernel_version-Xverbose
 kexec_file_load
 kexec_load
 keyctl
@@ -200,6 +213,7 @@ keyctl-Xabbrev
 keyctl-Xraw
 keyctl-Xverbose
 kill
+kill_child
 ksysent
 ksysent.h
 lchown
@@ -211,6 +225,7 @@ list_sigaction_signum
 llseek
 localtime
 lookup_dcookie
+looping_threads
 lseek
 lstat
 lstat64
@@ -248,6 +263,9 @@ mount-Xabbrev
 mount-Xraw
 mount-Xverbose
 move_pages
+move_pages-Xabbrev
+move_pages-Xraw
+move_pages-Xverbose
 mq
 mq_sendrecv
 mq_sendrecv-read
@@ -260,6 +278,9 @@ nanosleep
 net-accept-connect
 net-icmp_filter
 net-packet_mreq
+net-packet_mreq-Xabbrev
+net-packet_mreq-Xraw
+net-packet_mreq-Xverbose
 net-sockaddr
 net-tpacket_req
 net-tpacket_stats
@@ -343,6 +364,7 @@ oldselect-efault-P
 oldstat
 open
 openat
+orphaned_process_group
 osf_utimes
 pause
 pc
@@ -382,6 +404,9 @@ print_maxfd
 printpath-umovestr
 printpath-umovestr-peekdata
 printpath-umovestr-undumpable
+printsignal-Xabbrev
+printsignal-Xraw
+printsignal-Xverbose
 printstr
 printstrn-umoven
 printstrn-umoven-peekdata
@@ -391,6 +416,7 @@ process_vm_readv
 process_vm_writev
 pselect6
 ptrace
+ptrace_syscall_info
 pure_executables.am
 pwritev
 qual_fault
@@ -399,6 +425,9 @@ qual_inject-retval
 qual_inject-signal
 qual_signal
 quotactl
+quotactl-Xabbrev
+quotactl-Xraw
+quotactl-Xverbose
 quotactl-success
 quotactl-success-v
 quotactl-v
@@ -485,6 +514,9 @@ setresuid32
 setreuid
 setreuid32
 setrlimit
+setrlimit-Xabbrev
+setrlimit-Xraw
+setrlimit-Xverbose
 setuid
 setuid32
 shmxt
@@ -500,6 +532,7 @@ sigprocmask
 sigreturn
 sigsuspend
 sleep
+so_error
 so_linger
 so_peercred
 so_peercred-Xabbrev
@@ -509,6 +542,9 @@ sock_filter-v
 sock_filter-v-Xabbrev
 sock_filter-v-Xraw
 sock_filter-v-Xverbose
+sockaddr_xlat-Xabbrev
+sockaddr_xlat-Xraw
+sockaddr_xlat-Xverbose
 socketcall
 sockopt-sol_netlink
 splice

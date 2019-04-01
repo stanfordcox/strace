@@ -45,7 +45,7 @@ struct aux_child {
 	struct list_item list;
 };
 
-static struct list_item children = EMPTY_LIST(&children);
+EMPTY_LIST(children);
 
 
 void
