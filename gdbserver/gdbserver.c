@@ -943,9 +943,11 @@ gdb_next_event(void)
 
 	switch (stop.type) {
 	case GDB_STOP_EXITED:
-		wd->status = W_EXITCODE(stop.code, 0);
-		wd->te = TE_EXITED;
-		return wd;
+		if (tcp->pid == gdb_group_pid) {
+			wd->status = W_EXITCODE(stop.code, 0);
+			wd->te = TE_EXITED;
+			return wd;
+		}
 
 	case GDB_STOP_TERMINATED:
 		wd->status = W_EXITCODE(0, gdb_signal_to_target(tcp, stop.code));

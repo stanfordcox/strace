@@ -29,7 +29,7 @@ chown32	-a31
 chroot	-a24
 clock	test_trace_expr 'times|fcntl.*' -e/clock
 clock_adjtime	-a37
-clock_nanosleep	-e trace=clock_nanosleep,clock_gettime
+clock_nanosleep	-e trace=clock_nanosleep,clock_gettime	# !gdb gdbserver passes SIGALRM to the child not to gdb
 clock_xettime	-a36 -e trace=clock_getres,clock_gettime,clock_settime
 copy_file_range
 creat	-a20
@@ -232,7 +232,7 @@ msg_control	-a21 -e trace=sendmsg
 msg_control-v	-v -a21 -e trace=sendmsg
 msg_name	-a20 -e trace=recvmsg
 munlockall	-a13
-nanosleep	-a20
+nanosleep	-a20	# !gdb gdbserver passes SIGALRM to the child not to gdb
 net-icmp_filter	-e trace=getsockopt,setsockopt
 net-packet_mreq -e trace=setsockopt
 net-packet_mreq-Xabbrev	-e trace=setsockopt -Xabbrev
@@ -308,7 +308,7 @@ oldselect-P	-a13 -e trace=select -P /dev/full 9>>/dev/full
 oldselect-efault	-a13 -e trace=select
 oldselect-efault-P	-a13 -e trace=select -P /dev/full 9>>/dev/full
 oldstat	-a32 -v -P stat.sample -P /dev/full
-open	-a30 -P $NAME.sample
+open	-a30 -P $NAME.sample   # !gdb Uses /proc
 openat	-a36 -P $NAME.sample
 orphaned_process_group	. "${srcdir=.}/PTRACE_SEIZE.sh"; run_strace_match_diff -f -e trace=none -e signal='!chld'
 osf_utimes	-a21
@@ -344,7 +344,7 @@ prlimit64
 process_vm_readv	-s5 -a37
 process_vm_writev	-s5 -a38
 pselect6
-ptrace	-a23 -e signal=none
+ptrace	-a23 -e signal=none	# !gdb Uses ptrace
 ptrace_syscall_info	-a35 -e signal=none -e trace=ptrace
 pwritev	-a22 -s7
 quotactl

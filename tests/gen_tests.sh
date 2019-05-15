@@ -36,6 +36,9 @@ fi
 names=
 
 while read -r name arg0 args; do {
+        # To not create a gdb test use a line suffix of the form: # !gdb comment
+        comment=${args##*!}
+        args=${args%\#*}
 	[ -n "${name###*}" ] || continue
 	if [ -z "$match" ]; then
 		names="$names $name"
@@ -76,7 +79,8 @@ while read -r name arg0 args; do {
 	esac > "$output"
 	
 	set +u
-	if [ -z "$arg0" ] ; then
+	if [ no-${comment:0:3} != "no-gdb" ]; then
+	    if [ -z "$arg0" ] ; then
 		names="$names $name-gdb"
 		cat <<-EOF  > "$outputgdb"
 		$hdr
@@ -84,7 +88,7 @@ while read -r name arg0 args; do {
 		run_strace_gdbserver_match_diff $arg0 $args
 		EOF
 		chmod a+x "$outputgdb"
-	elif [[ "$arg0" =~ '-' ]] ; then
+	    elif [[ "$arg0" =~ '-' ]] ; then
 		names="$names $name-gdb"
 		cat <<-EOF  > "$outputgdb"
 		$hdr
@@ -92,6 +96,7 @@ while read -r name arg0 args; do {
 		run_strace_gdbserver_match_diff $arg0 $args
 		EOF
 		chmod a+x "$outputgdb"
+	    fi
 	fi
 	set -u
 
