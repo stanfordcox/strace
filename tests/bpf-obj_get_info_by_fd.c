@@ -180,7 +180,7 @@ print_prog_load(void *attr_void, size_t size, long rc)
 	if (size > offsetof(struct BPF_PROG_LOAD_struct, license))
 		printf(", license=\"BSD\"");
 	if (size > offsetof(struct BPF_PROG_LOAD_struct, log_buf))
-		printf(", log_level=42, log_size=%zu, log_buf=\"\"",
+		printf(", log_level=7, log_size=%zu, log_buf=\"\"",
 		       sizeof(log_buf));
 	if (size > offsetof(struct BPF_PROG_LOAD_struct, kern_version))
 		printf(", kern_version=KERNEL_VERSION(57005, 192, 222)");
@@ -253,7 +253,7 @@ main(void)
 		.insn_cnt     = ARRAY_SIZE(socket_prog),
 		.insns        = (uintptr_t) socket_prog,
 		.license      = (uintptr_t) license,
-		.log_level    = 42,
+		.log_level    = 7,
 		.log_size     = sizeof(log_buf),
 		.log_buf      = (uintptr_t) log_buf,
 		.kern_version = 0xdeadc0de,
@@ -585,6 +585,14 @@ main(void)
 		if (bpf_prog_get_info_attr.info_len >
 		    offsetof(struct bpf_prog_info_struct, prog_tags))
 			printf(", prog_tags=NULL");
+		if (bpf_prog_get_info_attr.info_len >
+		    offsetof(struct bpf_prog_info_struct, run_time_ns))
+			printf(", run_time_ns=%llu",
+			       (unsigned long long) prog_info->run_time_ns);
+		if (bpf_prog_get_info_attr.info_len >
+		    offsetof(struct bpf_prog_info_struct, run_cnt))
+			printf(", run_cnt=%llu",
+			       (unsigned long long) prog_info->run_cnt);
 
 		printf("}");
 # else /* !VERBOSE */

@@ -118,6 +118,9 @@ inet-cmsg	-e trace=recvmsg
 init_module	-a27
 inotify	-a23 -e trace=inotify_add_watch,inotify_rm_watch
 inotify_init1	-a27
+io_uring_enter	-y
+io_uring_register	-y
+io_uring_setup	-a26 -y
 ioctl_block	+ioctl.test
 ioctl_dm	+ioctl.test -s9
 ioctl_dm-v	+ioctl.test -v -s9
@@ -319,6 +322,7 @@ perf_event_open_unabbrev	-a1 -v -e trace=perf_event_open
 personality-Xabbrev	+personality.test -Xabbrev
 personality-Xraw	+personality.test -a15 -Xraw
 personality-Xverbose	+personality.test -Xverbose
+pidfd_send_signal
 pipe2	-a15
 pkey_alloc	-a17
 pkey_free	-a13
@@ -455,6 +459,7 @@ sockaddr_xlat-Xraw	-Xraw -e trace=connect
 sockaddr_xlat-Xverbose	-Xverbose -e trace=connect
 socketcall	-a20
 sockopt-sol_netlink	-e trace=getsockopt,setsockopt
+sockopt-timestamp	-e trace=recvmsg
 splice
 stat	-a32 -v -P stat.sample -P /dev/full
 stat64	-a32 -v -P stat.sample -P /dev/full

@@ -648,7 +648,22 @@ SYS_FUNC(rt_tgsigqueueinfo)
 	return RVAL_DECODED;
 }
 
-SYS_FUNC(rt_sigtimedwait)
+SYS_FUNC(pidfd_send_signal)
+{
+	/* int pidfd */
+	printfd(tcp, tcp->u_arg[0]);
+	/* int sig, siginfo_t *info */
+	tprints(", ");
+	print_sigqueueinfo(tcp, tcp->u_arg[1], tcp->u_arg[2]);
+	/* unsigned int flags */
+	tprintf(", %#x", (unsigned int) tcp->u_arg[3]);
+
+	return RVAL_DECODED;
+}
+
+static int
+do_rt_sigtimedwait(struct tcb *const tcp, const print_obj_by_addr_fn print_ts,
+		   const sprint_obj_by_addr_fn sprint_ts)
 {
 	/* NB: kernel requires arg[3] == NSIG_BYTES */
 	if (entering(tcp)) {
@@ -662,10 +677,10 @@ SYS_FUNC(rt_sigtimedwait)
 			 */
 			printaddr(tcp->u_arg[1]);
 			tprints(", ");
-			print_timespec(tcp, tcp->u_arg[2]);
+			print_ts(tcp, tcp->u_arg[2]);
 			tprintf(", %" PRI_klu, tcp->u_arg[3]);
 		} else {
-			char *sts = xstrdup(sprint_timespec(tcp, tcp->u_arg[2]));
+			char *sts = xstrdup(sprint_ts(tcp, tcp->u_arg[2]));
 			set_tcb_priv_data(tcp, sts, free);
 		}
 	} else {
@@ -682,6 +697,18 @@ SYS_FUNC(rt_sigtimedwait)
 		}
 	}
 	return 0;
+}
+
+#if HAVE_ARCH_TIME32_SYSCALLS
+SYS_FUNC(rt_sigtimedwait_time32)
+{
+	return do_rt_sigtimedwait(tcp, print_timespec32, sprint_timespec32);
+}
+#endif
+
+SYS_FUNC(rt_sigtimedwait_time64)
+{
+	return do_rt_sigtimedwait(tcp, print_timespec64, sprint_timespec64);
 }
 
 SYS_FUNC(restart_syscall)

@@ -864,6 +864,8 @@ typedef bool (*tfetch_mem_fn)(struct tcb *, kernel_ulong_t addr,
 			      unsigned int size, void *dest);
 typedef bool (*print_fn)(struct tcb *, void *elem_buf,
 			 size_t elem_size, void *opaque_data);
+typedef int (*print_obj_by_addr_fn)(struct tcb *, kernel_ulong_t);
+typedef const char * (*sprint_obj_by_addr_fn)(struct tcb *, kernel_ulong_t);
 
 
 /**
@@ -1136,6 +1138,35 @@ tprint_iov(struct tcb *tcp, kernel_ulong_t len, kernel_ulong_t addr,
 	tprint_iov_upto(tcp, len, addr, decode_iov, -1);
 }
 
+# if HAVE_ARCH_TIME32_SYSCALLS
+extern bool print_timespec32_data_size(const void *arg, size_t size);
+extern bool print_timespec32_array_data_size(const void *arg,
+					     unsigned int nmemb,
+					     size_t size);
+extern int print_timespec32(struct tcb *, kernel_ulong_t);
+extern const char *sprint_timespec32(struct tcb *, kernel_ulong_t);
+extern int print_timespec32_utime_pair(struct tcb *, kernel_ulong_t);
+extern int print_itimerspec32(struct tcb *, kernel_ulong_t);
+extern int print_timex32(struct tcb *, kernel_ulong_t);
+# endif /* HAVE_ARCH_TIME32_SYSCALLS */
+
+extern bool print_timespec64_data_size(const void *arg, size_t size);
+extern bool print_timespec64_array_data_size(const void *arg,
+					     unsigned int nmemb,
+					     size_t size);
+extern int print_timespec64(struct tcb *, kernel_ulong_t);
+extern const char *sprint_timespec64(struct tcb *, kernel_ulong_t);
+extern int print_timespec64_utime_pair(struct tcb *, kernel_ulong_t);
+extern int print_itimerspec64(struct tcb *, kernel_ulong_t);
+
+extern bool print_timeval64_data_size(const void *arg, size_t size);
+
+extern int print_timex64(struct tcb *, kernel_ulong_t);
+
+# ifdef SPARC64
+extern int print_sparc64_timex(struct tcb *, kernel_ulong_t);
+# endif
+
 # ifdef ALPHA
 typedef struct {
 	int tv_sec, tv_usec;
@@ -1144,9 +1175,9 @@ typedef struct {
 extern void print_timeval32_t(const timeval32_t *);
 extern void printrusage32(struct tcb *, kernel_ulong_t);
 extern const char *sprint_timeval32(struct tcb *, kernel_ulong_t addr);
-extern void print_timeval32(struct tcb *, kernel_ulong_t addr);
-extern void print_timeval32_utimes(struct tcb *, kernel_ulong_t addr);
-extern void print_itimerval32(struct tcb *, kernel_ulong_t addr);
+extern int print_timeval32(struct tcb *, kernel_ulong_t addr);
+extern int print_timeval32_utimes(struct tcb *, kernel_ulong_t addr);
+extern int print_itimerval32(struct tcb *, kernel_ulong_t addr);
 # endif
 
 # ifdef HAVE_STRUCT_USER_DESC

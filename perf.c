@@ -2,7 +2,7 @@
  * Copyright (c) 2013 Ben Noordhuis <info@bnoordhuis.nl>
  * Copyright (c) 2013-2015 Dmitry V. Levin <ldv@altlinux.org>
  * Copyright (c) 2016 Eugene Syromyatnikov <evgsyr@gmail.com>
- * Copyright (c) 2015-2018 The strace developers.
+ * Copyright (c) 2015-2019 The strace developers.
  * All rights reserved.
  *
  * SPDX-License-Identifier: LGPL-2.1-or-later
@@ -74,7 +74,7 @@ fetch_perf_event_attr(struct tcb *const tcp, const kernel_ulong_t addr)
 	/* Size should be multiple of 8, but kernel doesn't check for it */
 	/* size &= ~7; */
 
-	attr = xcalloc(1, sizeof(*attr));
+	attr = xzalloc(sizeof(*attr));
 
 	if (umoven_or_printaddr(tcp, addr, size, attr)) {
 		free(attr);

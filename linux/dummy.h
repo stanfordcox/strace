@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 1993 Branko Lankester <branko@hacktic.nl>
  * Copyright (c) 1993, 1994, 1995 Rick Sladkey <jrs@world.std.com>
- * Copyright (c) 1995-2018 The strace developers.
+ * Copyright (c) 1995-2019 The strace developers.
  * All rights reserved.
  *
  * SPDX-License-Identifier: LGPL-2.1-or-later
@@ -40,7 +40,8 @@
 /* like another call */
 # define sys_acct		sys_chdir
 # define sys_chroot		sys_chdir
-# define sys_clock_getres	sys_clock_gettime
+# define sys_clock_getres_time32	sys_clock_gettime32
+# define sys_clock_getres_time64	sys_clock_gettime64
 # define sys_connect		sys_bind
 # define sys_fchdir		sys_close
 # define sys_fdatasync		sys_close

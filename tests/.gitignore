@@ -144,6 +144,9 @@ inject-nf
 inotify
 inotify_init1
 int_0x80
+io_uring_enter
+io_uring_register
+io_uring_setup
 ioctl
 ioctl_block
 ioctl_dm
@@ -375,6 +378,7 @@ personality
 personality-Xabbrev
 personality-Xraw
 personality-Xverbose
+pidfd_send_signal
 pipe
 pipe2
 pkey_alloc
@@ -547,6 +551,7 @@ sockaddr_xlat-Xraw
 sockaddr_xlat-Xverbose
 socketcall
 sockopt-sol_netlink
+sockopt-timestamp
 splice
 stack-fcall
 stack-fcall-mangled
