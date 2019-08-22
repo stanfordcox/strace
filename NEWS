@@ -2,8 +2,43 @@ Noteworthy changes in release ?.? (????-??-??)
 ==============================================
 
 * Improvements
-  * Updated lists of AUDIT_*, CLONE_*, ETH_*, KEY_*, KVM_*, TIPC_*,
-    and V4L2_* constants.
+  * Implemented decoding of pidfd_open syscall.
+  * Enhanced decoding of NETLINK_ROUTE protocol.
+  * Implemented decoding of UNIX_DIAG_UID netlink attribute.
+  * Updated lists of BPF_*, ETH_*, KEYCTL_*, KVM_*, MAP_*, SO_*, TCP_*, V4L2_*,
+    XDP_*, and *_MAGIC constants.
+
+* Bug fixes
+  * Fixed syscall tampering on arc, avr32, csky, ia64, m68k, metag, mips,
+    nios2, or1k, riscv, s390, s390x, sparc, sparc64, and tile architectures
+    when PTRACE_GET_SYSCALL_INFO is in use.
+  * Fixed tests on alpha with Linux kernel headers 5.1+.
+
+* Portability
+  * Removed support for decoding syscalls in range [1024...1079] on AArch64
+    architecture as this range has never been implemented in mainline kernel
+    releases.
+
+Noteworthy changes in release 5.2 (2019-07-12)
+==============================================
+
+* Improvements
+  * Implemented syscall return status filtering with -e status=set option
+    and its aliases: -z (limit syscall printing to successful syscalls only)
+    and -Z (limit syscall printing to failed syscalls only).  Addresses Debian
+    bug #176376.
+  * Implemented decoding of open_tree, move_mount, fsopen, fsconfig, fsmount,
+    and fspick syscalls.
+  * Enhanced decoding of bpf, clone, inotify_init, mbind, and set_mempolicy
+    syscalls.
+  * Updated lists of AT_*, AUDIT_*, BPF_*, CLONE_*, ETH_*, KEY_*, KVM_*, MPOL_*,
+    TIPC_*, and V4L2_* constants.
+  * Updated lists of ioctl commands from Linux 5.2.
+
+* Bug fixes
+  * Fixed syscall tampering on powerpc and powerpc64 when
+    PTRACE_GET_SYSCALL_INFO is in use.
+  * Fixed build with cutting-edge toolchain.
 
 Noteworthy changes in release 5.1 (2019-05-22)
 ==============================================

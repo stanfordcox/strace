@@ -6,7 +6,7 @@
  */
 
 #include "tests.h"
-#include <asm/unistd.h>
+#include "scno.h"
 
 #ifdef __NR_getegid
 
@@ -16,7 +16,7 @@
 int
 main(void)
 {
-	printf("getegid() = %ld\n", syscall(__NR_getegid));
+	printf("getegid() = %s\n", sprintrc(syscall(__NR_getegid)));
 	return 0;
 }
 

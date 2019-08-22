@@ -2,7 +2,7 @@
 #
 # Update copyright notices for source files.
 #
-# Copyright (c) 2017-2018 The strace developers.
+# Copyright (c) 2017-2019 The strace developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: LGPL-2.1-or-later
@@ -102,10 +102,10 @@ process_file()
 		continue
 	fi
 
-	last_commit_year=$(date -u +%Y -d "$(git log -n1 --format=format:%aD \
-		-- "$f")")
-	first_commit_year=$(date -u +%Y -d "$(git log --reverse --format=format:%aD \
-		-- "$f" | head -n 1)")
+	last_commit_year=$(date -u +%Y -d "@$(git log --format=format:%at -- "$f" |
+						sort -rn |head -n1)")
+	first_commit_year=$(date -u +%Y -d "@$(git log --format=format:%at -- "$f" |
+						sort -n |head -n1)")
 	copyright_year=$(printf '%s' "$copyright_year_raw" |
 		sort -r -n | head -n 1)
 	start_note='from git log'

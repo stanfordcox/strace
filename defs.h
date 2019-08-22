@@ -204,6 +204,8 @@ struct tcb {
 	int sys_func_rval;	/* Syscall entry parser's return value */
 	int curcol;		/* Output column for this process */
 	FILE *outf;		/* Output file for this process */
+	struct staged_output_data *staged_output_data;
+
 	const char *auxstr;	/* Auxiliary info from syscall (see RVAL_STR) */
 	void *_priv_data;	/* Private data for syscall decoding functions */
 	void (*_free_priv_data)(void *); /* Callback for freeing priv_data */
@@ -213,8 +215,9 @@ struct tcb {
 	const struct_sysent *s_prev_ent; /* for "resuming interrupted SYSCALL" msg */
 	struct inject_opts *inject_vec[SUPPORTED_PERSONALITIES];
 	struct timespec stime;	/* System time usage as of last process wait */
-	struct timespec dtime;	/* Delta for system time usage */
-	struct timespec etime;	/* Syscall entry time */
+	struct timespec ltime;	/* System time usage as of last syscall entry */
+	struct timespec atime;	/* System time right after attach */
+	struct timespec etime;	/* Syscall entry time (CLOCK_MONOTONIC) */
 	struct timespec delay_expiration_time; /* When does the delay end */
 
 	struct mmap_cache_t *mmap_cache;
@@ -309,30 +312,13 @@ extern const struct_sysent stub_sysent;
 # include "xlat.h"
 
 extern const struct xlat addrfams[];
-
-/** Protocol hardware identifiers array, sorted, defined in sockaddr.c. */
 extern const struct xlat arp_hardware_types[];
-/** Protocol hardware identifiers array size without terminating record. */
-extern const size_t arp_hardware_types_size;
-
 extern const struct xlat at_flags[];
 extern const struct xlat clocknames[];
 extern const struct xlat dirent_types[];
-
-/** Ethernet protocols list, sorted, defined in sockaddr.c. */
 extern const struct xlat ethernet_protocols[];
-/** Ethernet protocols array size without terminating record. */
-extern const size_t ethernet_protocols_size;
-
-/** IP protocols list, sorted, defined in net.c. */
 extern const struct xlat inet_protocols[];
-/** IP protocols array size without terminating record. */
-extern const size_t inet_protocols_size;
-
 extern const struct xlat evdev_abs[];
-/** Number of elements in evdev_abs array without the terminating record. */
-extern const size_t evdev_abs_size;
-
 extern const struct xlat audit_arch[];
 extern const struct xlat evdev_ev[];
 extern const struct xlat iffflags[];
@@ -344,11 +330,13 @@ extern const struct xlat nl_netfilter_msg_types[];
 extern const struct xlat nl_route_types[];
 extern const struct xlat open_access_modes[];
 extern const struct xlat open_mode_flags[];
+extern const struct xlat pollflags[];
 extern const struct xlat ptrace_cmds[];
 extern const struct xlat resource_flags[];
 extern const struct xlat routing_scopes[];
 extern const struct xlat routing_table_ids[];
 extern const struct xlat routing_types[];
+extern const struct xlat rwf_flags[];
 extern const struct xlat seccomp_filter_flags[];
 extern const struct xlat seccomp_ret_action[];
 extern const struct xlat setns_types[];
@@ -419,7 +407,6 @@ extern bool Tflag;
 extern bool iflag;
 extern bool count_wallclock;
 extern unsigned int qflag;
-extern bool not_failing_only;
 extern unsigned int show_fd_path;
 /* are we filtering traces based on paths? */
 extern struct path_set {
@@ -445,7 +432,7 @@ extern unsigned os_release;
 extern int read_int_from_file(struct tcb *, const char *, int *);
 
 extern void set_sortby(const char *);
-extern void set_overhead(int);
+extern int set_overhead(const char *);
 
 extern bool get_instruction_pointer(struct tcb *, kernel_ulong_t *);
 extern bool get_stack_pointer(struct tcb *, kernel_ulong_t *);
@@ -500,7 +487,14 @@ extern kernel_long_t scno_by_name(const char *s, unsigned p,
  * @return     Shuffled or raw syscall number, respectively.
  */
 extern kernel_ulong_t shuffle_scno(kernel_ulong_t scno);
-extern const char *err_name(unsigned long err);
+/**
+ * Print error name in accordance with current xlat style setting.
+ *
+ * @param err     Error value.
+ * @param negated If set to true, negative values of the err parameter indicate
+ *                error condition, otherwise positive.
+ */
+extern void print_err(int64_t err, bool negated);
 
 extern bool is_erestart(struct tcb *);
 extern void temporarily_clear_syserror(struct tcb *);
@@ -650,8 +644,7 @@ extern unsigned long getfdinode(struct tcb *, int);
 extern enum sock_proto getfdproto(struct tcb *, int);
 
 extern const char *xlookup(const struct xlat *, const uint64_t);
-extern const char *xlat_search(const struct xlat *, const size_t, const uint64_t);
-extern const char *xlat_idx(const struct xlat *xlat, size_t nmemb, uint64_t val);
+extern const char *xlookup_le(const struct xlat *, uint64_t *);
 
 struct dyxlat;
 struct dyxlat *dyxlat_alloc(size_t nmemb);
@@ -723,46 +716,8 @@ extern int printxvals_ex(uint64_t val, const char *dflt,
 	ATTRIBUTE_SENTINEL;
 # define printxvals(val_, dflt_, ...) \
 	printxvals_ex((val_), (dflt_), XLAT_STYLE_DEFAULT, __VA_ARGS__)
-
-extern int printxval_searchn_ex(const struct xlat *, size_t xlat_size,
-				uint64_t val, const char *dflt,
-				enum xlat_style);
-
-static inline int
-printxval_searchn(const struct xlat *xlat, size_t xlat_size, uint64_t val,
-		  const char *dflt)
-{
-	return printxval_searchn_ex(xlat, xlat_size, val, dflt,
-				    XLAT_STYLE_DEFAULT);
-}
-
-/**
- * Wrapper around printxval_searchn that passes ARRAY_SIZE - 1
- * as the array size, as all arrays are XLAT_END-terminated and
- * printxval_searchn expects a size without the terminating record.
- */
-# define printxval_search(xlat__, val__, dflt__) \
-	printxval_searchn(xlat__, ARRAY_SIZE(xlat__) - 1, val__, dflt__)
-# define printxval_search_ex(xlat__, val__, dflt__, style__) \
-	printxval_searchn_ex((xlat__), ARRAY_SIZE(xlat__) - 1, (val__), \
-			     (dflt__), (style__))
-
-extern int printxval_indexn_ex(const struct xlat *, size_t xlat_size,
-			       uint64_t val, const char *dflt, enum xlat_style);
-
-static inline int
-printxval_indexn(const struct xlat *xlat, size_t xlat_size, uint64_t val,
-		 const char *dflt)
-{
-	return printxval_indexn_ex(xlat, xlat_size, val, dflt,
-				   XLAT_STYLE_DEFAULT);
-}
-
-# define printxval_index(xlat__, val__, dflt__) \
-	printxval_indexn(xlat__, ARRAY_SIZE(xlat__) - 1, val__, dflt__)
-# define printxval_index_ex(xlat__, val__, dflt__) \
-	printxval_indexn_ex((xlat__), ARRAY_SIZE(xlat__) - 1, (val__), \
-			    (dflt__), XLAT_STYLE_DEFAULT)
+# define printxval_ex(xlat_, val_, dflt_, style_) \
+	printxvals_ex((val_), (dflt_), (style_), (xlat_), NULL)
 
 extern int sprintxval_ex(char *buf, size_t size, const struct xlat *,
 			 unsigned int val, const char *dflt, enum xlat_style);
@@ -774,22 +729,9 @@ sprintxval(char *buf, size_t size, const struct xlat *xlat, unsigned int val,
 	return sprintxval_ex(buf, size, xlat, val, dflt, XLAT_STYLE_DEFAULT);
 }
 
-extern void printxval_dispatch_ex(const struct xlat *, size_t xlat_size,
-				  uint64_t val, const char *dflt,
-				  enum xlat_type, enum xlat_style);
-static inline void
-printxval_dispatch(const struct xlat *xlat, size_t xlat_size, uint64_t val,
-		   const char *dflt, enum xlat_type xt)
-{
-	return printxval_dispatch_ex(xlat, xlat_size, val, dflt, xt,
-				     XLAT_STYLE_DEFAULT);
-}
-
 enum xlat_style_private_flag_bits {
 	/* print_array */
 	PAF_PRINT_INDICES_BIT = XLAT_STYLE_SPEC_BITS + 1,
-	PAF_INDEX_XLAT_SORTED_BIT,
-	PAF_INDEX_XLAT_VALUE_INDEXED_BIT,
 
 	/* print_xlat */
 	PXF_DEFAULT_STR_BIT,
@@ -800,8 +742,6 @@ enum xlat_style_private_flag_bits {
 enum xlat_style_private_flags {
 	/* print_array */
 	FLAG_(PAF_PRINT_INDICES),
-	FLAG_(PAF_INDEX_XLAT_SORTED),
-	FLAG_(PAF_INDEX_XLAT_VALUE_INDEXED),
 
 	/* print_xlat */
 	FLAG_(PXF_DEFAULT_STR),
@@ -828,21 +768,30 @@ extern int printflags_ex(uint64_t flags, const char *dflt,
 			 enum xlat_style, const struct xlat *, ...)
 	ATTRIBUTE_SENTINEL;
 extern const char *sprintflags_ex(const char *prefix, const struct xlat *,
-				  uint64_t flags, enum xlat_style);
+				  uint64_t flags, char sep, enum xlat_style);
 
 static inline const char *
 sprintflags(const char *prefix, const struct xlat *xlat, uint64_t flags)
 {
-	return sprintflags_ex(prefix, xlat, flags, XLAT_STYLE_DEFAULT);
+	return sprintflags_ex(prefix, xlat, flags, '\0', XLAT_STYLE_DEFAULT);
 }
 
 extern const char *sprinttime(long long sec);
 extern const char *sprinttime_nsec(long long sec, unsigned long long nsec);
 extern const char *sprinttime_usec(long long sec, unsigned long long usec);
 
+#ifndef MAX_ADDR_LEN
+# define MAX_ADDR_LEN 32
+#endif
+
 extern const char *sprint_mac_addr(const uint8_t addr[], size_t size);
 extern void print_mac_addr(const char *prefix,
 			   const uint8_t addr[], size_t size);
+
+extern const char *sprint_hwaddr(const uint8_t addr[], size_t size,
+				 uint32_t devtype);
+extern void print_hwaddr(const char *prefix,
+			 const uint8_t addr[], size_t size, uint32_t devtype);
 
 extern void print_uuid(const unsigned char *uuid);
 
@@ -852,6 +801,7 @@ extern void print_numeric_long_umask(unsigned long);
 extern void print_dev_t(unsigned long long dev);
 extern void print_kernel_version(unsigned long version);
 extern void print_abnormal_hi(kernel_ulong_t);
+extern void print_ioprio(unsigned int ioprio);
 
 extern bool print_int32_array_member(struct tcb *, void *elem_buf,
 				     size_t elem_size, void *data);
@@ -883,7 +833,6 @@ print_array_ex(struct tcb *,
 	       void *opaque_data,
 	       unsigned int flags,
 	       const struct xlat *index_xlat,
-	       size_t index_xlat_size,
 	       const char *index_dflt);
 
 static inline bool
@@ -898,7 +847,7 @@ print_array(struct tcb *const tcp,
 {
 	return print_array_ex(tcp, start_addr, nmemb, elem_buf, elem_size,
 			      tfetch_mem_func, print_func, opaque_data,
-			      0, NULL, 0, NULL);
+			      0, NULL, NULL);
 }
 
 extern kernel_ulong_t *
@@ -1057,6 +1006,9 @@ extern void ts_add(struct timespec *, const struct timespec *, const struct time
 extern void ts_sub(struct timespec *, const struct timespec *, const struct timespec *);
 extern void ts_mul(struct timespec *, const struct timespec *, int);
 extern void ts_div(struct timespec *, const struct timespec *, int);
+extern const struct timespec *ts_min(const struct timespec *, const struct timespec *);
+extern const struct timespec *ts_max(const struct timespec *, const struct timespec *);
+extern int parse_ts(const char *s, struct timespec *t);
 
 # ifdef ENABLE_STACKTRACE
 extern void unwind_init(void);
@@ -1224,6 +1176,12 @@ extern void tprints(const char *str);
 extern void tprintf_comment(const char *fmt, ...) ATTRIBUTE_FORMAT((printf, 1, 2));
 extern void tprints_comment(const char *str);
 
+/*
+ * Staging output for status qualifier.
+ */
+extern FILE *strace_open_memstream(struct tcb *tcp);
+extern void strace_close_memstream(struct tcb *tcp, bool publish);
+
 static inline void
 printaddr_comment(const kernel_ulong_t addr)
 {
@@ -1308,6 +1266,9 @@ printnum_addr_ ## name(struct tcb *, kernel_ulong_t addr)		\
 DECL_PRINTNUM_ADDR(int);
 DECL_PRINTNUM_ADDR(int64);
 # undef DECL_PRINTNUM_ADDR
+
+extern bool
+printnum_fd(struct tcb *, kernel_ulong_t addr);
 
 # ifndef current_wordsize
 extern bool
@@ -1465,6 +1426,28 @@ truncate_kulong_to_current_wordsize(const kernel_ulong_t v)
 	 sizeof(v) == sizeof(int) ? (long long) (int) (v) : \
 	 sizeof(v) == sizeof(long) ? (long long) (long) (v) : \
 	 (long long) (v))
+
+/*
+ * Computes the popcount of a vector of 32-bit values.
+ */
+static inline unsigned int
+popcount32(const uint32_t *a, unsigned int size)
+{
+	unsigned int count = 0;
+
+	for (; size; ++a, --size) {
+		uint32_t x = *a;
+
+# ifdef HAVE___BUILTIN_POPCOUNT
+		count += __builtin_popcount(x);
+# else
+		for (; x; ++count)
+			x &= x - 1;
+# endif
+	}
+
+	return count;
+}
 
 extern const char *const errnoent[];
 extern const char *const signalent[];

@@ -87,6 +87,12 @@ void perror_msg_and_skip(const char *, ...)
 void skip_if_unavailable(const char *);
 
 /*
+ * Obtain an exclusive lock on dirname(path_name)/lock_name file
+ * using open and flock.
+ */
+int lock_file_by_dirname(const char *path_name, const char *lock_name);
+
+/*
  * Allocate memory that ends on the page boundary.
  * Pages allocated by this call are preceded by an unmapped page
  * and followed also by an unmapped page.
@@ -207,6 +213,9 @@ int printxval(const struct xlat *, const unsigned long long, const char *);
 /* Invoke a socket syscall, either directly or via __NR_socketcall. */
 int socketcall(const int nr, const int call,
 	       long a1, long a2, long a3, long a4, long a5);
+
+/* Call chdir and print strace output depending on flags. */
+void test_status_chdir(const char *dir, bool print_success, bool print_fail);
 
 /* Wrappers for recvmmsg and sendmmsg syscalls. */
 struct mmsghdr;

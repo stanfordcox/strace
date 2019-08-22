@@ -41,6 +41,7 @@ chroot
 clock_adjtime
 clock_nanosleep
 clock_xettime
+clone-flags
 clone_parent
 clone_ptrace
 copy_file_range
@@ -88,6 +89,12 @@ filter-unavailable
 finit_module
 flock
 fork-f
+fsconfig
+fsconfig-P
+fsmount
+fsopen
+fspick
+fspick-P
 fstat
 fstat-Xabbrev
 fstat-Xraw
@@ -142,7 +149,10 @@ inet-cmsg
 init_module
 inject-nf
 inotify
+inotify_init
+inotify_init-y
 inotify_init1
+inotify_init1-y
 int_0x80
 io_uring_enter
 io_uring_register
@@ -233,7 +243,11 @@ lseek
 lstat
 lstat64
 madvise
+maybe_switch_current_tcp
 mbind
+mbind-Xabbrev
+mbind-Xraw
+mbind-Xverbose
 membarrier
 memfd_create
 memfd_create-Xabbrev
@@ -265,6 +279,8 @@ mount
 mount-Xabbrev
 mount-Xraw
 mount-Xverbose
+move_mount
+move_mount-P
 move_pages
 move_pages-Xabbrev
 move_pages-Xraw
@@ -366,6 +382,8 @@ oldselect-efault
 oldselect-efault-P
 oldstat
 open
+open_tree
+open_tree-P
 openat
 orphaned_process_group
 osf_utimes
@@ -378,6 +396,9 @@ personality
 personality-Xabbrev
 personality-Xraw
 personality-Xverbose
+pidfd_open
+pidfd_open-P
+pidfd_open-y
 pidfd_send_signal
 pipe
 pipe2
@@ -446,7 +467,9 @@ readlink
 readlinkat
 readv
 reboot
+recv-MSG_TRUNC
 recvfrom
+recvfrom-MSG_TRUNC
 recvmmsg-timeout
 recvmsg
 redirect-fds
@@ -495,6 +518,9 @@ semop
 sendfile
 sendfile64
 set_mempolicy
+set_mempolicy-Xabbrev
+set_mempolicy-Xraw
+set_mempolicy-Xverbose
 set_ptracer_any
 set_sigblock
 set_sigign
@@ -559,6 +585,13 @@ stat
 stat64
 statfs
 statfs64
+status-all
+status-failed
+status-none
+status-none-threads
+status-successful
+status-unfinished
+status-unfinished-threads
 statx
 swap
 sxetmask
@@ -570,6 +603,7 @@ sync_file_range2
 syscallent.i
 sysinfo
 syslog
+syslog-success
 tee
 threads-execve
 time

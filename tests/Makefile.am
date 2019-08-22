@@ -40,6 +40,7 @@ libtests_a_SOURCES = \
 	inode_of_sockfd.c \
 	libmmsg.c \
 	libsocketcall.c \
+	lock_file.c \
 	overflowuid.c \
 	pipe_maxfd.c \
 	print_quoted_string.c \
@@ -49,6 +50,7 @@ libtests_a_SOURCES = \
 	signal2name.c \
 	skip_unavailable.c \
 	sprintrc.c \
+	status.c \
 	tail_alloc.c \
 	test_netlink.h \
 	test_nlattr.h \
@@ -158,6 +160,9 @@ check_PROGRAMS = $(PURE_EXECUTABLES) \
 	sleep \
 	stack-fcall \
 	stack-fcall-mangled \
+	status-none-threads \
+	status-unfinished-threads \
+	syslog-success \
 	threads-execve \
 	unblock_reset_raise \
 	unix-pair-send-recv \
@@ -178,6 +183,7 @@ ftruncate64_CPPFLAGS = $(AM_CPPFLAGS) -D_FILE_OFFSET_BITS=64
 localtime_LDADD = $(clock_LIBS) $(LDADD)
 looping_threads_LDADD = -lpthread $(LDADD)
 lstat64_CPPFLAGS = $(AM_CPPFLAGS) -D_FILE_OFFSET_BITS=64
+maybe_switch_current_tcp_LDADD = -lpthread $(LDADD)
 mmap64_CPPFLAGS = $(AM_CPPFLAGS) -D_FILE_OFFSET_BITS=64
 mmap64_Xabbrev_CPPFLAGS = $(AM_CPPFLAGS) -D_FILE_OFFSET_BITS=64
 mmap64_Xraw_CPPFLAGS = $(AM_CPPFLAGS) -D_FILE_OFFSET_BITS=64
@@ -191,6 +197,8 @@ preadv_pwritev_CPPFLAGS = $(AM_CPPFLAGS) -D_FILE_OFFSET_BITS=64
 pwritev_CPPFLAGS = $(AM_CPPFLAGS) -D_FILE_OFFSET_BITS=64
 stat64_CPPFLAGS = $(AM_CPPFLAGS) -D_FILE_OFFSET_BITS=64
 statfs_CPPFLAGS = $(AM_CPPFLAGS) -D_FILE_OFFSET_BITS=64
+status_none_threads_LDADD = -lpthread $(LDADD)
+status_unfinished_threads_LDADD = -lpthread $(LDADD)
 threads_execve_LDADD = -lpthread $(clock_LIBS) $(LDADD)
 times_LDADD = $(clock_LIBS) $(LDADD)
 truncate64_CPPFLAGS = $(AM_CPPFLAGS) -D_FILE_OFFSET_BITS=64
@@ -227,6 +235,7 @@ DECODER_TESTS = \
 	btrfs-wX.test \
 	caps-abbrev.test \
 	caps.test \
+	clone-flags.test \
 	eventfd.test \
 	execve-v.test \
 	execve.test \
@@ -235,6 +244,7 @@ DECODER_TESTS = \
 	gdbrsp.test \
 	getuid.test \
 	int_0x80.test \
+	inotify_init-y.test \
 	ioctl.test \
 	ioctl_evdev-success-v.test \
 	ioctl_evdev-success.test \
@@ -280,6 +290,7 @@ DECODER_TESTS = \
 	seccomp-strict.test \
 	sigaltstack.test \
 	sun_path.test \
+	syslog-success.test \
 	uio.test \
 	umount.test \
 	umount2.test \
@@ -337,6 +348,9 @@ MISC_TESTS = \
 	restart_syscall.test \
 	sigblock.test \
 	sigign.test \
+	status-detached.test \
+	status-none-threads.test \
+	status-unfinished-threads.test \
 	strace-C.test \
 	strace-E.test \
 	strace-S.test \
@@ -424,6 +438,7 @@ EXTRA_DIST = \
 	sockaddr_xlat.c \
 	sockname.c \
 	stack-fcall.h \
+	status-detached.expected \
 	strace-C.expected \
 	strace-E.expected \
 	strace-T.expected \

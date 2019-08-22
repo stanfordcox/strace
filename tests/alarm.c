@@ -8,7 +8,7 @@
  */
 
 #include "tests.h"
-#include <asm/unistd.h>
+#include "scno.h"
 
 #ifdef __NR_alarm
 
@@ -18,8 +18,8 @@
 int
 main(void)
 {
-	int rc = syscall(__NR_alarm, (unsigned long) 0xffffffff0000002aULL);
-	printf("alarm(%u) = %d\n", 42, rc);
+	const unsigned long arg = (unsigned long) 0xffffffff0000002aULL;
+	printf("alarm(%u) = %s\n", 42, sprintrc(syscall(__NR_alarm, arg)));
 
 	puts("+++ exited with 0 +++");
 	return 0;

@@ -3,7 +3,7 @@
  * Copyright (c) 1993 Branko Lankester <branko@hacktic.nl>
  * Copyright (c) 1993, 1994, 1995, 1996 Rick Sladkey <jrs@world.std.com>
  * Copyright (c) 1996-2001 Wichert Akkerman <wichert@cistron.nl>
- * Copyright (c) 1999-2018 The strace developers.
+ * Copyright (c) 1999-2019 The strace developers.
  * All rights reserved.
  *
  * SPDX-License-Identifier: LGPL-2.1-or-later
@@ -65,8 +65,7 @@ evdev_decode_number(const unsigned int code)
 	if (_IOC_DIR(code) == _IOC_WRITE) {
 		if (nr >= 0xc0 && nr <= 0xc0 + 0x3f) {
 			tprints("EVIOCSABS(");
-			printxval_indexn(evdev_abs, evdev_abs_size, nr - 0xc0,
-					 "ABS_???");
+			printxval(evdev_abs, nr - 0xc0, "ABS_???");
 			tprints(")");
 			return 1;
 		}
@@ -85,13 +84,12 @@ evdev_decode_number(const unsigned int code)
 		return 1;
 	} else if (nr >= 0x40 && nr <= 0x40 + 0x3f) {
 		tprints("EVIOCGABS(");
-		printxval_indexn(evdev_abs, evdev_abs_size, nr - 0x40,
-				 "ABS_???");
+		printxval(evdev_abs, nr - 0x40, "ABS_???");
 		tprints(")");
 		return 1;
 	}
 
-	switch (_IOC_NR(nr)) {
+	switch (nr) {
 		case 0x06:
 			tprintf("EVIOCGNAME(%u)", _IOC_SIZE(code));
 			return 1;

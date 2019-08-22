@@ -7,7 +7,7 @@
  * Copyright (c) 2006-2007 Ulrich Drepper <drepper@redhat.com>
  * Copyright (c) 2009-2013 Denys Vlasenko <dvlasenk@redhat.com>
  * Copyright (c) 2005-2015 Dmitry V. Levin <ldv@altlinux.org>
- * Copyright (c) 2014-2018 The strace developers.
+ * Copyright (c) 2014-2019 The strace developers.
  * All rights reserved.
  *
  * SPDX-License-Identifier: LGPL-2.1-or-later
@@ -45,8 +45,6 @@ print_dirfd(struct tcb *tcp, int fd)
 		print_xlat_d(AT_FDCWD);
 	else
 		printfd(tcp, fd);
-
-	tprints(", ");
 }
 
 /*
@@ -56,11 +54,10 @@ print_dirfd(struct tcb *tcp, int fd)
 const char *
 sprint_open_modes(unsigned int flags)
 {
-	static char outstr[(1 + ARRAY_SIZE(open_mode_flags)) * sizeof("O_LARGEFILE")];
+	static char outstr[sizeof("flags O_ACCMODE")];
 	char *p;
 	char sep;
 	const char *str;
-	const struct xlat *x;
 
 	sep = ' ';
 	p = stpcpy(outstr, "flags");
@@ -73,21 +70,10 @@ sprint_open_modes(unsigned int flags)
 			return outstr;
 		sep = '|';
 	}
+	*p = '\0';
 
-	for (x = open_mode_flags; x->str; x++) {
-		if ((flags & x->val) == x->val) {
-			*p++ = sep;
-			p = stpcpy(p, x->str);
-			flags &= ~x->val;
-			if (!flags)
-				return outstr;
-			sep = '|';
-		}
-	}
-	/* flags is still nonzero */
-	*p++ = sep;
-	p = xappendstr(outstr, p, "%#x", flags);
-	return outstr;
+	return sprintflags_ex(outstr, open_mode_flags, flags, sep,
+			      XLAT_STYLE_ABBREV) ?: outstr;
 }
 
 void
@@ -121,6 +107,7 @@ SYS_FUNC(open)
 SYS_FUNC(openat)
 {
 	print_dirfd(tcp, tcp->u_arg[0]);
+	tprints(", ");
 	return decode_open(tcp, 1);
 }
 
