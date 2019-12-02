@@ -40,7 +40,10 @@ gdb_get_regs (pid_t pid, void *io)
 
         int get_regs_error;
         size_t size;
-        char *regs = gdb_get_all_regs(pid, &size);
+        char *regs;
+        do {
+        	regs = gdb_get_all_regs(pid, &size);
+        } while (strncmp(regs, "OK", 2) == 0);
 	struct tcb *tcp = pid2tcb(pid);
         if (regs) {
                 if (size == 0 || regs[0] == 'E') {

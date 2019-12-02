@@ -2814,24 +2814,6 @@ ptrace_handle_group_stop(unsigned int *restart_sig, void *data)
 void
 ptrace_handle_exec(struct tcb **current_tcp, void *data)
 {
-	/*
-	 * Under Linux, execve changes pid to thread leader's pid,
-	 * and we see this changed pid on EVENT_EXEC and later,
-	 * execve sysexit. Leader "disappears" without exit
-	 * notification. Let user know that, drop leader's tcb,
-	 * and fix up pid in execve thread's tcb.
-	 * Effectively, execve thread's tcb replaces leader's tcb.
-	 *
-	 * BTW, leader is 'stuck undead' (doesn't report WIFEXITED
-	 * on exit syscall) in multithreaded programs exactly
-	 * in order to handle this case.
-	 *
-	 * PTRACE_GETEVENTMSG returns old pid starting from Linux 3.0.
-	 * On 2.6 and earlier, it can return garbage.
-	 */
-	if (os_release >= KERNEL_VERSION(3, 0, 0))
-		*current_tcp = maybe_switch_tcbs(*current_tcp,
-						 (*current_tcp)->pid);
 }
 
 bool
@@ -2858,7 +2840,7 @@ dispatch_event(const struct tcb_wait_data *wd)
 	/*
 	 * Copy wd->status to a non-const variable to workaround glibc bugs
 	 * around union wait fixed by glibc commit glibc-2.24~391
-,	 */
+	 */
 	int status = wd ? wd->status : 0;
 
 	switch (te) {
@@ -2910,7 +2892,7 @@ dispatch_event(const struct tcb_wait_data *wd)
 		return true;
 
 	case TE_STOP_BEFORE_EXECVE:
-	        handle_exec(&current_tcp, (void*)wd);
+		handle_exec(&current_tcp, (void*)wd);
 		/* TODO move to handle_exec? */
 		/* The syscall succeeded, clear the flag.  */
 		current_tcp->flags &= ~TCB_CHECK_EXEC_SYSCALL;

@@ -336,10 +336,29 @@ send_packet(FILE *out, const char *command, size_t size)
 	}
 }
 
+static char *recv_packet(FILE *in, size_t *ret_size, bool* ret_sum_ok);
 void
 gdb_send(struct gdb_conn *conn, const char *command, size_t size)
 {
 	bool acked = false;
+	fd_set rfds;
+	struct timeval tv;
+	int retval;
+
+	FD_ZERO (&rfds);
+	FD_SET (fileno(conn->in), &rfds);
+
+	tv.tv_sec = 0;
+	tv.tv_usec = 0;
+
+	retval = select (1, &rfds, NULL, NULL, &tv);
+
+	if (retval) {
+		size_t size;
+		char *reply = gdb_recv(conn, &size, false);
+		debug_msg("readahead of %s\n",reply);
+	}
+
 	do {
 		send_packet(conn->out, command, size);
 
@@ -428,7 +447,7 @@ pop_notification(size_t *size)
 			notifications.start = 0;
 	}
 
-	debug_msg("Popped %s (%d items left in queue)",
+	debug_msg("Popped %s (%d items left in queue)\n",
 		  packet, notifications.count);
 
 	return packet;
@@ -437,6 +456,7 @@ pop_notification(size_t *size)
 bool
 have_notification(void)
 {
+	debug_msg("have_notification %d items\n", notifications.count);
 	return (notifications.count == 0 ? false : true);
 }
 
@@ -585,15 +605,21 @@ gdb_recv(struct gdb_conn *conn, size_t *size, bool want_stop)
 	do {
 		reply = recv_packet(conn->in, size, &acked);
 
-		/* (See gdb_recv_stop for non-stop packet order)
-		   If a notification arrived while expecting another packet
-		   type, then cache the notification. */
+		/* We received an asynchronous non-stop notification
+		 * while expecting another packet.  Cache it for later
+		 * (See gdb_recv_stop for non-stop protocol description)
+		 */
 		/* XXX it's better to preserve (some of) %Stop: header */
 		/* XXX What if checksum is wrong? */
-		if (!want_stop && strncmp(reply, "T05syscall", 10) == 0) {
+		if (!want_stop && strncmp(reply, "T05syscall", 10) == 0) do {
 			push_notification(reply, *size);
+			gdb_send(conn, "vStopped", 8);
 			reply = recv_packet(conn->in, size, &acked);
-		}
+			if (strcmp(reply, "OK") == 0) {
+				reply = recv_packet(conn->in, size, &acked);
+				break;
+			}
+		} while (true);
 
 		if (conn->ack) {
 			/* send +/- depending on checksum result, retry if needed */

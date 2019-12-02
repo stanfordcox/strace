@@ -69,10 +69,11 @@ main (int argc, char *const argv[])
 	/* Test fork-event interactions.  Child exits immediately. */
 	if (fork () == 0)
 	  _exit (0);
-
-	/* Trigger an intentional ENOSYS.  */
-	syscall (unknown_syscall);
-
-	/* The last syscall.  Do not change this.  */
-	_exit (0);
+	else
+	{
+		/* Trigger an intentional ENOSYS.  */
+		syscall (unknown_syscall);
+		/* The last syscall.  Do not change this.  */
+		_exit (0);
+	}
 }
