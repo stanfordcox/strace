@@ -50,6 +50,21 @@
 #  define XLAT_VERBOSE 0
 # endif
 
+
+
+# if XLAT_RAW
+#  define XLAT_KNOWN(val_, str_) STRINGIFY_VAL(val_)
+#  define XLAT_UNKNOWN(val_, dflt_) STRINGIFY_VAL(val_)
+# elif XLAT_VERBOSE
+#  define XLAT_KNOWN(val_, str_) STRINGIFY_VAL(val_) " /* " str_ " */"
+#  define XLAT_UNKNOWN(val_, dflt_) STRINGIFY_VAL(val_) " /* " dflt_ " */"
+# else
+#  define XLAT_KNOWN(val_, str_) str_
+#  define XLAT_UNKNOWN(val_, dflt_) STRINGIFY_VAL(val_) " /* " dflt_ " */"
+# endif
+
+# define XLAT_STR(v_) sprintxlat(#v_, v_, NULL)
+
 # ifndef DEFAULT_STRLEN
 /* Default maximum # of bytes printed in printstr et al. */
 #  define DEFAULT_STRLEN 32
@@ -208,7 +223,41 @@ struct xlat;
 int printflags(const struct xlat *, const unsigned long long, const char *);
 
 /* Print constant in symbolic form according to xlat table. */
-int printxval(const struct xlat *, const unsigned long long, const char *);
+int printxval_abbrev(const struct xlat *, const unsigned long long,
+		     const char *);
+int printxval_raw(const struct xlat *, const unsigned long long, const char *);
+int printxval_verbose(const struct xlat *, const unsigned long long,
+		      const char *);
+
+/* Print constant in symbolic form according to xlat table. */
+const char *sprintxlat_abbrev(const char *, const unsigned long long,
+			   const char *);
+const char *sprintxlat_raw(const char *, const unsigned long long,
+			   const char *);
+const char *sprintxlat_verbose(const char *, const unsigned long long,
+			       const char *);
+
+/* Print constant in symbolic form according to xlat table. */
+const char *sprintxval_abbrev(const struct xlat *, const unsigned long long,
+			      const char *);
+const char *sprintxval_raw(const struct xlat *, const unsigned long long,
+			   const char *);
+const char *sprintxval_verbose(const struct xlat *, const unsigned long long,
+			       const char *);
+
+# if XLAT_RAW
+#  define printxval  printxval_raw
+#  define sprintxlat sprintxlat_raw
+#  define sprintxval sprintxval_raw
+# elif XLAT_VERBOSE
+#  define printxval  printxval_verbose
+#  define sprintxlat sprintxlat_verbose
+#  define sprintxval sprintxval_verbose
+# else
+#  define printxval  printxval_abbrev
+#  define sprintxlat sprintxlat_abbrev
+#  define sprintxval sprintxval_abbrev
+# endif
 
 /* Invoke a socket syscall, either directly or via __NR_socketcall. */
 int socketcall(const int nr, const int call,

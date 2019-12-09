@@ -31,6 +31,13 @@ clock	test_trace_expr 'times|fcntl.*' -e/clock
 clock_adjtime	-a37
 clock_nanosleep	-e trace=clock_nanosleep,clock_gettime	# !gdb gdbserver passes SIGALRM to the child not to gdb
 clock_xettime	-a36 -e trace=clock_getres,clock_gettime,clock_settime
+clone3	-a16
+clone3-Xabbrev	-a16 -Xabbrev  -e trace=clone3
+clone3-Xraw	-a16 -Xraw     -e trace=clone3
+clone3-Xverbose	-a16 -Xverbose -e trace=clone3
+clone3-success-Xabbrev	+clone3-success.test -a16 -Xabbrev
+clone3-success-Xraw	+clone3-success.test -a16 -Xraw
+clone3-success-Xverbose	+clone3-success.test -a16 -Xverbose
 copy_file_range
 creat	-a20
 delete_module	-a23
@@ -65,6 +72,8 @@ fcntl64	-a8
 fdatasync	-a14
 file_handle	-e trace=name_to_handle_at,open_by_handle_at
 file_ioctl	+ioctl.test
+filter_seccomp	. "${srcdir=.}/filter_seccomp.sh"; test_prog_set --seccomp-bpf -f
+filter_seccomp-flag	../$NAME
 finit_module	-a25
 flock	-a19
 fork-f	-a26 -qq -f -e signal=none -e trace=chdir
@@ -132,8 +141,21 @@ io_uring_setup	-a26 -y
 ioctl_block	+ioctl.test
 ioctl_dm	+ioctl.test -s9
 ioctl_dm-v	+ioctl.test -v -s9
-ioctl_evdev	+ioctl.test
-ioctl_evdev-v	+ioctl.test -v
+ioctl_evdev	+ioctl.test -a26
+ioctl_evdev-Xabbrev	+ioctl.test -a26 -Xabbrev
+ioctl_evdev-Xraw	+ioctl.test -a28 -Xraw
+ioctl_evdev-Xverbose	+ioctl.test -a41 -Xverbose
+ioctl_evdev-v	+ioctl.test -a26 -v
+ioctl_evdev-v-Xabbrev	+ioctl.test -a26 -v -Xabbrev
+ioctl_evdev-v-Xraw	+ioctl.test -a28 -v -Xraw
+ioctl_evdev-v-Xverbose	+ioctl.test -a41 -v -Xverbose
+ioctl_evdev-success-Xabbrev	+ioctl_evdev-success.test -Xabbrev
+ioctl_evdev-success-Xraw	+ioctl_evdev-success.test -a27 -Xraw
+ioctl_evdev-success-Xverbose	+ioctl_evdev-success.test -a43 -Xverbose
+ioctl_evdev-success-v	+ioctl_evdev-success.test -a26 -v
+ioctl_evdev-success-v-Xabbrev	+ioctl_evdev-success.test -v -Xabbrev
+ioctl_evdev-success-v-Xraw	+ioctl_evdev-success.test -a27 -v -Xraw
+ioctl_evdev-success-v-Xverbose	+ioctl_evdev-success.test -a43 -v -Xverbose
 ioctl_inotify	+ioctl.test
 ioctl_kvm_run	+ioctl.test -a36 -y
 ioctl_kvm_run-v	+ioctl.test -v -a36 -y
@@ -155,6 +177,7 @@ ioctl_sg_io_v4	+ioctl.test
 ioctl_sock_gifconf	+ioctl.test -a28 -s1
 ioctl_uffdio	+ioctl.test
 ioctl_v4l2	+ioctl.test
+ioctl_watchdog	+ioctl.test
 ioperm	-a27
 iopl	-a8
 ioprio	-a18 -e trace=ioprio_get,ioprio_set
@@ -168,7 +191,7 @@ ipc_msg-Xabbrev	+ipc.sh -Xabbrev -a26
 ipc_msg-Xraw	+ipc.sh -Xraw -a16
 ipc_msg-Xverbose	+ipc.sh -Xverbose -a34
 ipc_msgbuf-Xabbrev	+ipc_msgbuf.test -Xabbrev
-ipc_msgbuf-Xraw	+ipc_msgbuf.test -Xraw -a20
+ipc_msgbuf-Xraw	+ipc_msgbuf.test -Xraw -a19
 ipc_msgbuf-Xverbose	+ipc_msgbuf.test -Xverbose
 ipc_sem	+ipc.sh -a29
 ipc_sem-Xabbrev	+ipc.sh -Xabbrev -a29
@@ -192,12 +215,13 @@ keyctl-Xabbrev	-a31 -s10 -e trace=keyctl -Xabbrev
 keyctl-Xraw	-a13 -s10 -e trace=keyctl -Xraw
 keyctl-Xverbose	-a41 -s10 -e trace=keyctl -Xverbose
 kill	-a12 -esignal=none
+ksysent	../$NAME
 lchown	-a30
 lchown32	-a32
 link
 linkat
 lookup_dcookie	-a27
-lstat	-a32 -v -P stat.sample -P /dev/full
+lstat	-a31 -v -P stat.sample -P /dev/full
 lstat64	-a32 -v -P stat.sample -P /dev/full
 madvise	-a33
 maybe_switch_current_tcp	-a30 -f -e trace=execveat
@@ -425,7 +449,9 @@ seccomp-filter-v	-v -e trace=seccomp
 seccomp_get_action_avail	-e trace=seccomp
 select	-a36
 select-P	-a36 -e trace=select -P /dev/full 9>>/dev/full
-semop	-a32 -e trace=semop,semtimedop
+semop	-a32
+semop-indirect	-a32 -e trace=semop
+semtimedop
 sendfile	-a27
 sendfile64	-a29
 set_mempolicy	-a34 -s3
@@ -485,7 +511,7 @@ socketcall	-a20
 sockopt-sol_netlink	-e trace=getsockopt,setsockopt
 sockopt-timestamp	-e trace=recvmsg
 splice
-stat	-a32 -v -P stat.sample -P /dev/full
+stat	-a30 -v -P stat.sample -P /dev/full
 stat64	-a32 -v -P stat.sample -P /dev/full
 statfs	-a17
 statfs64	-a23

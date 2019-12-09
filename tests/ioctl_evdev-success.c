@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 The strace developers.
+ * Copyright (c) 2018-2019 The strace developers.
  * All rights reserved.
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
@@ -44,7 +44,7 @@ static void
 test_evdev(struct evdev_check *check, const void *arg)
 {
 	long rc = invoke_test_syscall(check->cmd, check->arg_ptr);
-	printf("ioctl(-1, %s, ", check->cmd_str);
+	printf("ioctl(-1, %s, ", sprintxlat(check->cmd_str, check->cmd, NULL));
 	if (check->print_arg)
 		check->print_arg(rc, check->arg_ptr, arg);
 	else
@@ -56,6 +56,9 @@ static void
 print_input_absinfo(long rc, const void *ptr, const void *arg)
 {
 	const struct input_absinfo *absinfo = ptr;
+# if VERBOSE
+	const uintptr_t sz = (uintptr_t) arg;
+# endif
 
 	if (rc < 0) {
 		printf("%p", absinfo);
@@ -67,9 +70,20 @@ print_input_absinfo(long rc, const void *ptr, const void *arg)
 	PRINT_FIELD_U(", ", *absinfo, maximum);
 	PRINT_FIELD_U(", ", *absinfo, fuzz);
 	PRINT_FIELD_U(", ", *absinfo, flat);
+	if (sz > offsetofend(struct input_absinfo, flat)) {
+		if (sz >= 24) {
 #  ifdef HAVE_STRUCT_INPUT_ABSINFO_RESOLUTION
-	PRINT_FIELD_U(", ", *absinfo, resolution);
+			PRINT_FIELD_U(", ", *absinfo, resolution);
+#  else
+			printf(", resolution=%u", *((int *) ptr + 5));
 #  endif
+
+			if (sz > 24)
+				printf(", ...");
+		} else {
+			printf(", ...");
+		}
+	}
 # else
 	printf(", ...");
 # endif
@@ -96,19 +110,18 @@ print_input_id(long rc, const void *ptr, const void *arg)
 static void
 print_mtslots(long rc, const void *ptr, const void *arg)
 {
-	const int *buffer = ptr;
+	const unsigned int *buffer = ptr;
 	const char * const * str = arg;
-	int num = atoi(*(str + 1));
 
 	if (rc < 0) {
 		printf("%p", buffer);
 		return;
 	}
 
-	printf("{code=%s", *str);
+	printf("{code=%s", sprintxlat(*str, *buffer, NULL));
 	printf(", values=[");
-	for (unsigned int i = 1; i <= (unsigned) num; i++)
-		printf("%s%s", i > 1 ? ", " : "", *(str + i + 1));
+	for (unsigned int i = 1; str[i]; i++)
+		printf("%s%s", i > 1 ? ", " : "", str[i]);
 	printf("]}");
 }
 # endif
@@ -116,26 +129,52 @@ print_mtslots(long rc, const void *ptr, const void *arg)
 static void
 print_getbit(long rc, const void *ptr, const void *arg)
 {
-	const char * const *str = arg;
+	const char * const *str = arg + sizeof(char *);
+# if XLAT_RAW || XLAT_VERBOSE
+	const unsigned long *buf = ptr;
+	const unsigned long buf_size = (uintptr_t) (str[-1]);
+# endif
+
+
 
 	if (rc <= 0) {
 		printf("%p", ptr);
 		return;
 	}
 
+# if !XLAT_RAW
 	printf("[");
 	for (unsigned long i = 0; str[i]; i++) {
-# if ! VERBOSE
+#  if ! VERBOSE
 		if (i >= 4) {
 			printf(", ...");
 			break;
 		}
-# endif
+#  endif
 		if (i)
 			printf(", ");
 		printf("%s", str[i]);
 	}
 	printf("]");
+# endif /* !XLAT_RAW */
+
+# if XLAT_VERBOSE
+	printf(" /* ");
+# endif
+
+# if XLAT_RAW || XLAT_VERBOSE
+	printf("[");
+	const unsigned long cnt =
+		(MIN((unsigned long) rc, buf_size) + sizeof(long) - 1)
+		/ sizeof(long);
+	for (unsigned long i = 0; i < cnt; i++)
+		printf("%s%#lx", i ? ", " : "", buf[i]);
+	printf("]");
+# endif
+
+# if XLAT_VERBOSE
+	printf(" */");
+# endif
 }
 
 int
@@ -160,8 +199,8 @@ main(int argc, char **argv)
 
 	for (unsigned int i = 0; i < num_skip; i++) {
 		long rc = ioctl(-1, EVIOCGID, NULL);
-		printf("ioctl(-1, EVIOCGID, NULL) = %s%s\n",
-		       sprintrc(rc),
+		printf("ioctl(-1, %s, NULL) = %s%s\n",
+		       XLAT_STR(EVIOCGID), sprintrc(rc),
 		       rc == inject_retval ? " (INJECTED)" : "");
 
 		if (rc != inject_retval)
@@ -176,21 +215,42 @@ main(int argc, char **argv)
 				   ", EVIOCGID, NULL) returning %lu",
 				   inject_retval);
 
+	static const void *absinfo_sz =
+		(const void *) (uintptr_t) sizeof(struct input_absinfo);
+
 	TAIL_ALLOC_OBJECT_CONST_PTR(struct input_id, id);
 	TAIL_ALLOC_OBJECT_CONST_PTR(struct input_absinfo, absinfo);
 	TAIL_ALLOC_OBJECT_CONST_PTR(int, bad_addr_slot);
 
+	struct input_absinfo *absinfo_24 = tail_alloc(MAX(sizeof(*absinfo_24),
+							  24));
+	struct input_absinfo *absinfo_32 = tail_alloc(MAX(sizeof(*absinfo_32),
+							  32));
+
+	fill_memory(absinfo, sizeof(struct input_absinfo));
+	fill_memory(absinfo_24, 24);
+	fill_memory(absinfo_32, 32);
+
 # ifdef EVIOCGMTSLOTS
-	int mtslots[] = { ABS_MT_SLOT, 1, 3 };
-	/* we use the second element to indicate the number of values */
-	/* mtslots_str[1] is "2" so the number of values is 2 */
-	const char *mtslots_str[] = { "ABS_MT_SLOT", "2", "1", "3" };
+	static const unsigned int mtslots[] = { ABS_MT_SLOT, 1, 3 };
+	static const char * const mtslots_str[] = {
+		"ABS_MT_SLOT", "1", "3", NULL };
 
 	/* invalid flag */
-	int invalid_mtslot[] = { -1, 1 };
-	char invalid_str[4096];
-	snprintf(invalid_str, sizeof(invalid_str), "%#x /* ABS_MT_??? */", invalid_mtslot[0]);
-	const char *invalid_mtslot_str[] = { invalid_str, "1", "1" };
+	static const unsigned int invalid_mtslot[] = { -1, 1 };
+	static const char * const invalid_mtslot_str[] = {
+		""
+#  if !XLAT_RAW && !XLAT_VERBOSE
+		"0xffffffff"
+#  endif
+#  if !XLAT_VERBOSE
+		" /* "
+#  endif
+		"ABS_MT_???"
+#  if !XLAT_VERBOSE
+		" */"
+#  endif
+		, "1", NULL };
 # endif
 
 	enum { ULONG_BIT = sizeof(unsigned long) * 8 };
@@ -200,21 +260,30 @@ main(int argc, char **argv)
 		1 << EV_ABS | 1 << EV_MSC | 1 << EV_LED | 1 << EV_SND
 		| 1 << EV_PWR };
 	static const char * const ev_more_str_2[] = {
-		"EV_ABS", "EV_MSC", NULL };
+		(char *) (uintptr_t) 4,
+		XLAT_KNOWN(0x3, "EV_ABS"), XLAT_KNOWN(0x4, "EV_MSC"), NULL };
 	static const char * const ev_more_str_3[] = {
-		"EV_ABS", "EV_MSC", "EV_LED", "EV_SND", "EV_PWR", NULL };
+		(char *) (uintptr_t) 4,
+		XLAT_KNOWN(0x3, "EV_ABS"), XLAT_KNOWN(0x4, "EV_MSC"),
+		XLAT_KNOWN(0x11, "EV_LED"), XLAT_KNOWN(0x12, "EV_SND"),
+		XLAT_KNOWN(0x16, "EV_PWR"), NULL };
 
 	/* set less than 4 bits */
 	static const unsigned long ev_less[NUM_WORDS] = {
 		1 << EV_ABS | 1 << EV_MSC | 1 << EV_LED };
 	static const char * const ev_less_str_2[] = {
-		"EV_ABS", "EV_MSC", NULL };
+		(char *) (uintptr_t) 4,
+		XLAT_KNOWN(0x3, "EV_ABS"), XLAT_KNOWN(0x4, "EV_MSC"), NULL };
 	static const char * const ev_less_str_3[] = {
-		"EV_ABS", "EV_MSC", "EV_LED", NULL };
+		(char *) (uintptr_t) 4,
+		XLAT_KNOWN(0x3, "EV_ABS"), XLAT_KNOWN(0x4, "EV_MSC"),
+		XLAT_KNOWN(0x11, "EV_LED"), NULL };
 
 	/* set zero bit */
 	static const unsigned long ev_zero[NUM_WORDS] = { 0x0 };
-	static const char * const ev_zero_str[] = { " 0 ", NULL };
+	static const char * const ev_zero_str[] = {
+		(char *) (uintptr_t) 1,
+		" 0 ", NULL };
 
 	/* KEY_MAX is 0x2ff which is greater than retval * 8 */
 	static const unsigned long key[NUM_WORDS] = {
@@ -222,9 +291,12 @@ main(int argc, char **argv)
 		[ KEY_F12 / ULONG_BIT ] = 1 << (KEY_F12 % ULONG_BIT) };
 
 	static const char * const key_str_8[] = {
-		"KEY_1", "KEY_2", NULL };
+		(char *) (uintptr_t) (NUM_WORDS * sizeof(long)),
+		XLAT_KNOWN(0x2, "KEY_1"), XLAT_KNOWN(0x3, "KEY_2"), NULL };
 	static const char * const key_str_16[] = {
-		"KEY_1", "KEY_2", "KEY_F12", NULL };
+		(char *) (uintptr_t) (NUM_WORDS * sizeof(long)),
+		XLAT_KNOWN(0x2, "KEY_1"), XLAT_KNOWN(0x3, "KEY_2"),
+		XLAT_KNOWN(0x58, "KEY_F12"), NULL };
 
 	assert(sizeof(ev_more) >= (unsigned long) inject_retval);
 	assert(sizeof(ev_less) >= (unsigned long) inject_retval);
@@ -236,9 +308,26 @@ main(int argc, char **argv)
 		const void *ptr;
 	} a[] = {
 		{ { ARG_STR(EVIOCGID), id, print_input_id }, NULL },
-		{ { ARG_STR(EVIOCGABS(ABS_X)), absinfo, print_input_absinfo }, NULL },
-		{ { ARG_STR(EVIOCGABS(ABS_Y)), absinfo, print_input_absinfo }, NULL },
-		{ { ARG_STR(EVIOCGABS(ABS_Y)), absinfo, print_input_absinfo }, NULL },
+		{ { _IOC(_IOC_READ, 'E', 0x40 + ABS_Y, 19), "EVIOCGABS(ABS_Y)",
+		    absinfo, NULL }, NULL },
+		{ { _IOC(_IOC_READ, 'E', 0x40 + ABS_Y, 20),
+		    "EVIOCGABS(ABS_Y)", absinfo, print_input_absinfo },
+		  (const void *) (uintptr_t) 20 },
+		{ { _IOC(_IOC_READ, 'E', 0x40 + ABS_Y, 21),
+		    "EVIOCGABS(ABS_Y)", absinfo_24, print_input_absinfo },
+		  (const void *) (uintptr_t) 21 },
+		{ { _IOC(_IOC_READ, 'E', 0x40 + ABS_Y, 24),
+		    "EVIOCGABS(ABS_Y)", absinfo_24, print_input_absinfo },
+		  (const void *) (uintptr_t) 24 },
+		{ { _IOC(_IOC_READ, 'E', 0x40 + ABS_Y, 32),
+		    "EVIOCGABS(ABS_Y)", absinfo_32, print_input_absinfo },
+		  (const void *) (uintptr_t) 32 },
+		{ { ARG_STR(EVIOCGABS(ABS_X)), absinfo, print_input_absinfo },
+		  absinfo_sz},
+		{ { ARG_STR(EVIOCGABS(ABS_Y)), absinfo, print_input_absinfo },
+		  absinfo_sz },
+		{ { ARG_STR(EVIOCGABS(ABS_Y)), absinfo, print_input_absinfo },
+		  absinfo_sz },
 		{ { ARG_STR(EVIOCGBIT(0, 0)), ev_more, print_getbit },
 			inject_retval * 8 <= EV_LED
 				? (const void *) &ev_more_str_2

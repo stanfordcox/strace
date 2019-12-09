@@ -153,6 +153,63 @@ extern char *stpcpy(char *dst, const char *src);
 #  define is_bigendian false
 # endif
 
+# if SUPPORTED_PERSONALITIES > 1
+extern void set_personality(unsigned int personality);
+extern unsigned current_personality;
+# else
+#  define set_personality(personality) ((void)0)
+#  define current_personality 0
+# endif
+
+# if SUPPORTED_PERSONALITIES == 1
+#  define current_wordsize PERSONALITY0_WORDSIZE
+#  define current_klongsize PERSONALITY0_KLONGSIZE
+# else
+#  if SUPPORTED_PERSONALITIES == 2 && PERSONALITY0_WORDSIZE == PERSONALITY1_WORDSIZE
+#   define current_wordsize PERSONALITY0_WORDSIZE
+#  else
+extern unsigned current_wordsize;
+#  endif
+#  if SUPPORTED_PERSONALITIES == 2 && PERSONALITY0_KLONGSIZE == PERSONALITY1_KLONGSIZE
+#   define current_klongsize PERSONALITY0_KLONGSIZE
+#  else
+extern unsigned current_klongsize;
+#  endif
+# endif
+
+# define max_addr() (~0ULL >> ((8 - current_wordsize) * 8))
+# define max_kaddr() (~0ULL >> ((8 - current_klongsize) * 8))
+
+/* Shorthands for defining word/klong-based dispatcher function bodies */
+# ifndef current_wordsize
+#  define opt_wordsize(opt_64_, opt_32_) \
+	((current_wordsize > sizeof(uint32_t)) ? (opt_64_) : (opt_32_))
+#  define dispatch_wordsize(call_64_, call_32_, ...) \
+	((current_wordsize > sizeof(uint32_t)) \
+		? (call_64_)(__VA_ARGS__) : (call_32_)(__VA_ARGS__))
+# elif current_wordsize > 4
+#  define opt_wordsize(opt_64_, opt_32_) (opt_64_)
+#  define dispatch_wordsize(call_64_, call_32_, ...) ((call_64_)(__VA_ARGS__))
+# else /* current_wordsize == 4 */
+#  define opt_wordsize(opt_64_, opt_32_) (opt_32_)
+#  define dispatch_wordsize(call_64_, call_32_, ...) ((call_32_)(__VA_ARGS__))
+# endif
+
+# ifndef current_klongsize
+#  define opt_klongsize(opt_64_, opt_32_) \
+	((current_klongsize > sizeof(uint32_t)) ? (opt_64_) : (opt_32_))
+#  define dispatch_klongsize(call_64_, call_32_, ...) \
+	((current_klongsize > sizeof(uint32_t)) \
+		? (call_64_)(__VA_ARGS__) : (call_32_)(__VA_ARGS__))
+# elif current_klongsize > 4
+#  define opt_klongsize(opt_64_, opt_32_) (opt_64_)
+#  define dispatch_klongsize(call_64_, call_32_, ...) ((call_64_)(__VA_ARGS__))
+# else /* current_klongsize == 4 */
+#  define opt_klongsize(opt_64_, opt_32_) (opt_32_)
+#  define dispatch_klongsize(call_64_, call_32_, ...) ((call_32_)(__VA_ARGS__))
+# endif
+
+
 typedef struct ioctlent {
 	const char *symbol;
 	unsigned int code;
@@ -194,13 +251,13 @@ struct tcb {
 	int flags;		/* See below for TCB_ values */
 	int pid;		/* If 0, this tcb is free */
 	int qual_flg;		/* qual_flags[scno] or DEFAULT_QUAL_FLAGS + RAW */
+# if SUPPORTED_PERSONALITIES > 1
+	unsigned int currpers;	/* Personality at the time of scno update */
+# endif
 	unsigned long u_error;	/* Error code */
 	kernel_ulong_t scno;	/* System call number */
 	kernel_ulong_t u_arg[MAX_ARGS];	/* System call arguments */
 	kernel_long_t u_rval;	/* Return value */
-# if SUPPORTED_PERSONALITIES > 1
-	unsigned int currpers;	/* Personality at the time of scno update */
-# endif
 	int sys_func_rval;	/* Syscall entry parser's return value */
 	int curcol;		/* Output column for this process */
 	FILE *outf;		/* Output file for this process */
@@ -275,7 +332,9 @@ struct tcb {
 # define TCB_DELAYED	0x2000	/* Current syscall has been delayed */
 # define TCB_TAMPERED_NO_FAIL 0x4000	/* We tamper tcb with syscall
 					   that should not fail. */
-#define TCB_GDB_CONT_PID_TID 0x4000 /* Use vCont;c:pPID.TID for gdb backend */
+# define TCB_SECCOMP_FILTER	0x8000	/* This process has a seccomp filter
+					 * attached.
+					 */
 
 /* qualifier flags */
 # define QUAL_TRACE	0x001	/* this system call should be traced */
@@ -302,6 +361,7 @@ struct tcb {
 # define inject_delay_exit(tcp)	((tcp)->flags & TCB_INJECT_DELAY_EXIT)
 # define syscall_delayed(tcp)	((tcp)->flags & TCB_DELAYED)
 # define syscall_tampered_nofail(tcp) ((tcp)->flags & TCB_TAMPERED_NO_FAIL)
+# define has_seccomp_filter(tcp)	((tcp)->flags & TCB_SECCOMP_FILTER)
 
 extern const struct_sysent stub_sysent;
 # define tcp_sysent(tcp) (tcp->s_ent ?: &stub_sysent)
@@ -615,8 +675,13 @@ umoven_or_printaddr_ignore_syserror(struct tcb *tcp, const kernel_ulong_t addr,
 // extern int
 // umovestr(struct tcb *, kernel_ulong_t addr, unsigned int len, char *laddr);
 
-// extern int upeek(struct tcb *tcp, unsigned long, kernel_ulong_t *);
-// extern int upoke(struct tcb *tcp, unsigned long, kernel_ulong_t);
+/* Invalidate the cache used by umove* functions.  */
+extern void invalidate_umove_cache(void);
+
+/*
+extern int upeek(struct tcb *tcp, unsigned long, kernel_ulong_t *);
+extern int upoke(struct tcb *tcp, unsigned long, kernel_ulong_t);
+*/
 
 # if HAVE_ARCH_GETRVAL2
 extern long getrval2(struct tcb *);
@@ -732,22 +797,20 @@ sprintxval(char *buf, size_t size, const struct xlat *xlat, unsigned int val,
 enum xlat_style_private_flag_bits {
 	/* print_array */
 	PAF_PRINT_INDICES_BIT = XLAT_STYLE_SPEC_BITS + 1,
+	PAF_ARRAY_TRUNCATED_BIT,
 
 	/* print_xlat */
 	PXF_DEFAULT_STR_BIT,
 };
 
-# define FLAG_(name_) name_ = 1 << name_##_BIT
-
 enum xlat_style_private_flags {
 	/* print_array */
-	FLAG_(PAF_PRINT_INDICES),
+	FLAG(PAF_PRINT_INDICES),
+	FLAG(PAF_ARRAY_TRUNCATED),
 
 	/* print_xlat */
-	FLAG_(PXF_DEFAULT_STR),
+	FLAG(PXF_DEFAULT_STR),
 };
-
-# undef FLAG_
 
 /** Print a value in accordance with xlat formatting settings. */
 extern void print_xlat_ex(uint64_t val, const char *str, enum xlat_style style);
@@ -780,9 +843,9 @@ extern const char *sprinttime(long long sec);
 extern const char *sprinttime_nsec(long long sec, unsigned long long nsec);
 extern const char *sprinttime_usec(long long sec, unsigned long long usec);
 
-#ifndef MAX_ADDR_LEN
-# define MAX_ADDR_LEN 32
-#endif
+# ifndef MAX_ADDR_LEN
+#  define MAX_ADDR_LEN 32
+# endif
 
 extern const char *sprint_mac_addr(const uint8_t addr[], size_t size);
 extern void print_mac_addr(const char *prefix,
@@ -809,6 +872,20 @@ extern bool print_uint32_array_member(struct tcb *, void *elem_buf,
 				      size_t elem_size, void *data);
 extern bool print_uint64_array_member(struct tcb *, void *elem_buf,
 				      size_t elem_size, void *data);
+extern bool print_xint32_array_member(struct tcb *, void *elem_buf,
+				      size_t elem_size, void *data);
+extern bool print_xint64_array_member(struct tcb *, void *elem_buf,
+				      size_t elem_size, void *data);
+
+static inline bool
+print_xlong_array_member(struct tcb *tcp, void *elem_buf, size_t elem_size,
+			 void *data)
+{
+	return dispatch_wordsize(print_xint64_array_member,
+				 print_xint32_array_member,
+				 tcp, elem_buf, elem_size, data);
+}
+
 
 typedef bool (*tfetch_mem_fn)(struct tcb *, kernel_ulong_t addr,
 			      unsigned int size, void *dest);
@@ -819,8 +896,29 @@ typedef const char * (*sprint_obj_by_addr_fn)(struct tcb *, kernel_ulong_t);
 
 
 /**
- * @param flags Combination of xlat style settings and additional flags from
- *              enum print_array_flags.
+ * Array printing function with over-engineered interface.
+ *
+ * @param start_addr       If tfetch_mem_fn is non-NULL: address in tracee's
+ *                         memory where the start of the array is located.
+ *                         If tfetch_mem_fn is NULL: ignored.
+ * @param nmemb            Number of elements in array.
+ * @param elem_buf         If tfetch_mem_fn is non-NULL: a buffer where each
+ *                         element fetched by tfetch_mem_fn is stored.
+ *                         If tfetch_mem_fn is NULL: address of the start of
+ *                         the array in local memory.
+ * @param elem_size        Size (in bytes) of each element in the array.
+ * @param tfetch_mem_fn    Fetching function. If NULL, then elem_buf is treated
+ *                         as local array of nmemb members elem_size each;
+ *                         start_addr is ignored.
+ * @param print_func       Element printing callback.
+ * @param opaque_data      A value that is unconditionally passed to print_func
+ *                         in opaque_data argument.
+ * @param flags            Combination of xlat style settings and additional
+ *                         flags from enum print_array_flags.
+ * @param index_xlat       Xlat array that is used for printing indices.
+ * @param index_xlat_size  The size of xlat array.
+ * @param index_dflt       Default string for the values not found
+ *                         in index_xlat.
  */
 extern bool
 print_array_ex(struct tcb *,
@@ -835,6 +933,7 @@ print_array_ex(struct tcb *,
 	       const struct xlat *index_xlat,
 	       const char *index_dflt);
 
+/** Print an array from tracee's memory without any index printing features. */
 static inline bool
 print_array(struct tcb *const tcp,
 	    const kernel_ulong_t start_addr,
@@ -848,6 +947,22 @@ print_array(struct tcb *const tcp,
 	return print_array_ex(tcp, start_addr, nmemb, elem_buf, elem_size,
 			      tfetch_mem_func, print_func, opaque_data,
 			      0, NULL, NULL);
+}
+
+/** Shorthand for printing local arrays. */
+static inline bool
+print_local_array(struct tcb *tcp,
+		  void *start_addr,
+		  const size_t nmemb,
+		  void *const elem_buf,
+		  const size_t elem_size,
+		  print_fn print_func,
+		  void *const opaque_data,
+		  unsigned int flags)
+{
+	return print_array_ex(tcp, (uintptr_t) start_addr , nmemb,
+			      elem_buf, elem_size, NULL, print_func,
+			      opaque_data, flags, NULL, NULL);
 }
 
 extern kernel_ulong_t *
@@ -973,6 +1088,7 @@ DECL_IOCTL(scsi);
 DECL_IOCTL(term);
 DECL_IOCTL(ubi);
 DECL_IOCTL(uffdio);
+DECL_IOCTL(watchdog);
 # undef DECL_IOCTL
 
 extern int decode_sg_io_v4(struct tcb *, const kernel_ulong_t arg);
@@ -1188,33 +1304,6 @@ printaddr_comment(const kernel_ulong_t addr)
 	tprintf_comment("%#llx", (unsigned long long) addr);
 }
 
-# if SUPPORTED_PERSONALITIES > 1
-extern void set_personality(unsigned int personality);
-extern unsigned current_personality;
-# else
-#  define set_personality(personality) ((void)0)
-#  define current_personality 0
-# endif
-
-# if SUPPORTED_PERSONALITIES == 1
-#  define current_wordsize PERSONALITY0_WORDSIZE
-#  define current_klongsize PERSONALITY0_KLONGSIZE
-# else
-#  if SUPPORTED_PERSONALITIES == 2 && PERSONALITY0_WORDSIZE == PERSONALITY1_WORDSIZE
-#   define current_wordsize PERSONALITY0_WORDSIZE
-#  else
-extern unsigned current_wordsize;
-#  endif
-#  if SUPPORTED_PERSONALITIES == 2 && PERSONALITY0_KLONGSIZE == PERSONALITY1_KLONGSIZE
-#   define current_klongsize PERSONALITY0_KLONGSIZE
-#  else
-extern unsigned current_klongsize;
-#  endif
-# endif
-
-# define max_addr() (~0ULL >> ((8 - current_wordsize) * 8))
-# define max_kaddr() (~0ULL >> ((8 - current_klongsize) * 8))
-
 /*
  * When u64 is interpreted by the kernel as an address, there is a difference
  * in behaviour between 32-bit and 64-bit kernel in the way u64_to_user_ptr
@@ -1270,101 +1359,34 @@ DECL_PRINTNUM_ADDR(int64);
 extern bool
 printnum_fd(struct tcb *, kernel_ulong_t addr);
 
-# ifndef current_wordsize
-extern bool
-printnum_long_int(struct tcb *, kernel_ulong_t addr,
-		  const char *fmt_long, const char *fmt_int)
-	ATTRIBUTE_FORMAT((printf, 3, 0))
-	ATTRIBUTE_FORMAT((printf, 4, 0));
-
-extern bool printnum_addr_long_int(struct tcb *, kernel_ulong_t addr);
-
 static inline bool
 printnum_slong(struct tcb *tcp, kernel_ulong_t addr)
 {
-	return printnum_long_int(tcp, addr, "%" PRId64, "%d");
+	return dispatch_wordsize(printnum_int64, printnum_int,
+				 tcp, addr, opt_wordsize("%" PRId64, "%d"));
 }
 
 static inline bool
 printnum_ulong(struct tcb *tcp, kernel_ulong_t addr)
 {
-	return printnum_long_int(tcp, addr, "%" PRIu64, "%u");
+	return dispatch_wordsize(printnum_int64, printnum_int,
+				 tcp, addr, opt_wordsize("%" PRIu64, "%u"));
 }
 
 static inline bool
 printnum_ptr(struct tcb *tcp, kernel_ulong_t addr)
 {
-	return printnum_addr_long_int(tcp, addr);
+	return dispatch_wordsize(printnum_addr_int64, printnum_addr_int,
+				 tcp, addr);
 }
-
-# elif current_wordsize > 4
-
-static inline bool
-printnum_slong(struct tcb *tcp, kernel_ulong_t addr)
-{
-	return printnum_int64(tcp, addr, "%" PRId64);
-}
-
-static inline bool
-printnum_ulong(struct tcb *tcp, kernel_ulong_t addr)
-{
-	return printnum_int64(tcp, addr, "%" PRIu64);
-}
-
-static inline bool
-printnum_ptr(struct tcb *tcp, kernel_ulong_t addr)
-{
-	return printnum_addr_int64(tcp, addr);
-}
-
-# else /* current_wordsize == 4 */
-
-static inline bool
-printnum_slong(struct tcb *tcp, kernel_ulong_t addr)
-{
-	return printnum_int(tcp, addr, "%d");
-}
-
-static inline bool
-printnum_ulong(struct tcb *tcp, kernel_ulong_t addr)
-{
-	return printnum_int(tcp, addr, "%u");
-}
-
-static inline bool
-printnum_ptr(struct tcb *tcp, kernel_ulong_t addr)
-{
-	return printnum_addr_int(tcp, addr);
-}
-
-# endif
-
-# ifndef current_klongsize
-extern bool printnum_addr_klong_int(struct tcb *, kernel_ulong_t addr);
 
 static inline bool
 printnum_kptr(struct tcb *tcp, kernel_ulong_t addr)
 {
-	return printnum_addr_klong_int(tcp, addr);
+	return dispatch_klongsize(printnum_addr_int64, printnum_addr_int,
+				  tcp, addr);
 }
 
-# elif current_klongsize > 4
-
-static inline bool
-printnum_kptr(struct tcb *tcp, kernel_ulong_t addr)
-{
-	return printnum_addr_int64(tcp, addr);
-}
-
-# else /* current_klongsize == 4 */
-
-static inline bool
-printnum_kptr(struct tcb *tcp, kernel_ulong_t addr)
-{
-	return printnum_addr_int(tcp, addr);
-}
-
-# endif
 
 # define DECL_PRINTPAIR(name)						\
 extern bool								\
@@ -1475,6 +1497,17 @@ extern unsigned nioctlents;
 extern const unsigned int nsyscall_vec[SUPPORTED_PERSONALITIES];
 extern const struct_sysent *const sysent_vec[SUPPORTED_PERSONALITIES];
 extern struct inject_opts *inject_vec[SUPPORTED_PERSONALITIES];
+
+# ifdef ENABLE_COVERAGE_GCOV
+#  ifdef HAVE_GCOV_H
+#   include <gcov.h>
+#  else
+extern void __gcov_dump(void);
+#  endif
+#  define GCOV_DUMP __gcov_dump()
+# else
+#  define GCOV_DUMP
+# endif
 
 # ifdef IN_MPERS_BOOTSTRAP
 /* Transform multi-line MPERS_PRINTER_DECL statements to one-liners.  */

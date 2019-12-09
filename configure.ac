@@ -60,6 +60,7 @@ case "$host_cpu" in
 aarch64*)
 	arch=aarch64
 	arch_m32=arm
+	cc_flags_m32=
 	AC_DEFINE([AARCH64], 1, [Define for the AArch64 architecture.])
 	;;
 alpha*)
@@ -144,9 +145,9 @@ powerpc*)
 		esac
 	fi
 	;;
-riscv*)
-	arch=riscv
-	AC_DEFINE([RISCV], 1, [Define for the RISC-V architecture])
+riscv64*)
+	arch=riscv64
+	AC_DEFINE([RISCV64], 1, [Define for the RISC-V 64-bit architecture])
 	;;
 s390)
 	arch=s390
@@ -266,6 +267,7 @@ AC_CHECK_FUNCS(m4_normalize([
 	be64toh
 	fallocate
 	fanotify_mark
+	fcntl64
 	fopen64
 	fork
 	fputs_unlocked
@@ -334,6 +336,7 @@ AC_CHECK_TYPES(m4_normalize([
 #include <linux/fcntl.h>])
 
 AC_CHECK_TYPES(m4_normalize([
+	struct crypto_user_alg,
 	struct crypto_report_aead,
 	struct crypto_report_blkcipher,
 	struct crypto_report_cipher,
@@ -348,8 +351,6 @@ AC_CHECK_TYPES(m4_normalize([
 AC_CHECK_TYPES(m4_normalize([
 	struct keyctl_kdf_params
 ]),,, [#include <linux/keyctl.h>])
-
-AC_CHECK_MEMBERS([struct timex.tai],,, [#include <sys/timex.h>])
 
 AC_CHECK_MEMBERS([struct utsname.domainname],,, [#include <sys/utsname.h>])
 
@@ -389,6 +390,7 @@ AC_CHECK_HEADERS(m4_normalize([
 	asm/guarded_storage.h
 	asm/sysmips.h
 	elf.h
+	gcov.h
 	iconv.h
 	inttypes.h
 	linux/bsg.h
@@ -424,6 +426,7 @@ AC_CHECK_HEADERS(m4_normalize([
 	linux/nsfs.h
 	linux/perf_event.h
 	linux/quota.h
+	linux/sched.h
 	linux/seccomp.h
 	linux/securebits.h
 	linux/sem.h
@@ -467,6 +470,10 @@ AC_CHECK_HEADERS(m4_normalize([
 #include <net/if.h>])
 
 AC_CHECK_HEADERS([linux/input.h], [
+	AC_CHECK_TYPES(m4_normalize([
+		struct input_keymap_entry,
+		struct input_mask
+	]),,, [#include <linux/input.h>])
 	AC_CHECK_MEMBERS([struct input_absinfo.resolution],,, [#include <linux/input.h>])
 ])
 
@@ -480,6 +487,9 @@ AC_CHECK_HEADERS([linux/bpf.h], [
 ])
 
 AC_CHECK_HEADERS([bluetooth/bluetooth.h], [
+	AC_CHECK_MEMBERS([struct sockaddr_hci.hci_channel],,,
+			 [#include <bluetooth/bluetooth.h>
+			 #include <bluetooth/hci.h>])
 	AC_CHECK_MEMBERS([struct sockaddr_l2.l2_bdaddr_type],,,
 			 [#include <bluetooth/bluetooth.h>
 			 #include <bluetooth/l2cap.h>])
@@ -610,6 +620,8 @@ AC_CHECK_MEMBERS(m4_normalize([
 		struct iocb.aio_flags,
 		struct iocb.aio_rw_flags
 		]),,, [#include <linux/aio_abi.h>])
+
+AC_CHECK_TYPES([struct clone_args],,, [#include <linux/sched.h>])
 
 CPPFLAGS="$saved_CPPFLAGS"
 
@@ -793,6 +805,11 @@ AC_CHECK_DECLS(m4_normalize([
 #include <linux/videodev2.h>])
 
 AC_CHECK_MEMBERS(m4_normalize([
+	struct v4l2_capability.device_caps,
+	struct v4l2_ext_control.string,
+	struct v4l2_format.fmt.pix_mp,
+	struct v4l2_format.fmt.sdr,
+	struct v4l2_format.fmt.sliced,
 	struct v4l2_window.global_alpha,
 	struct v4l2_sdr_format.buffersize
 ]),,, [#include <sys/time.h>
@@ -968,7 +985,40 @@ AC_ARG_ENABLE([mpers],
 	 esac],
 	[enable_mpers=yes])
 
-st_MPERS([m32], [aarch64|powerpc64|riscv|s390x|sparc64|tile|x32|x86_64])
+AS_IF([test x$arch = xaarch64],
+      [# So far, only aarch64 needs a separate compiler for its compat
+       # personality (which is AArch32, that is more or less ARMv7 EABI)
+       #
+       # Some heuristics regarding possible compiler name:
+       #   Debian:  arm-linux-gnueabi{,hf}-gcc
+       #   SuSE:    arm7{,hl}-linux-gnueabi-gcc
+       #   Red Hat: arm-redhat-linux-gnu-gcc
+       #   Fedora:  arm-linux-gnu-gcc
+       #   ALT:     armh-alt-linux-gnueabi-gcc
+       m4_foreach([triplet1], [arm, arm7, arm7hl, armh], dnl
+		  [m4_foreach([triplet2], [, $host_vendor-], dnl
+			      [m4_foreach([triplet3], [gnu, gnueabi, gnueabihf], dnl
+					  [m4_foreach([triplet_cc], [gcc, cc], dnl
+						      [m4_append([arm_compat_compilers], dnl
+								 triplet1[-]triplet2[linux-]triplet3[-]triplet_cc)])])])])
+       AC_CHECK_PROGS(CC_FOR_M32, arm_compat_compilers)
+       AS_IF([test -n "$CC_FOR_M32"],
+	     [: ${CPP_FOR_M32=$CC_FOR_M32 -E}
+	      : ${CFLAGS_FOR_M32=-std=gnu99}
+	      : ${CPPFLAGS_FOR_M32=}
+	     ])
+      ])
+
+# Set default compiler variables for personalities.
+m4_foreach([pers], [M32, MX32], dnl
+	   [m4_foreach([var], [CC, CPP, CPPFLAGS], dnl
+		       [[: ${]var[_FOR_]pers[=$]var[}]
+		        AC_SUBST(var[_FOR_]pers)]) dnl
+	    m4_foreach([var], [CFLAGS], dnl
+		       [[: ${]var[_FOR_]pers[=][}]
+		        AC_SUBST(var[_FOR_]pers)])])
+
+st_MPERS([m32], [aarch64|powerpc64|s390x|sparc64|tile|x32|x86_64])
 st_MPERS([mx32], [x86_64])
 
 AX_VALGRIND_DFLT([sgcheck], [off])

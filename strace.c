@@ -21,6 +21,7 @@
 #ifdef HAVE_PATHS_H
 # include <paths.h>
 #endif
+#include <getopt.h>
 #include <pwd.h>
 #include <grp.h>
 #include <dirent.h>
@@ -32,6 +33,7 @@
 
 #include "aux_children.h"
 #include "kill_save_errno.h"
+#include "filter_seccomp.h"
 #include "largefile_wrappers.h"
 #include "mmap_cache.h"
 #include "number_set.h"
@@ -97,6 +99,15 @@ static int opt_intr;
 /* We play with signal mask only if this mode is active: */
 #define interactive (opt_intr == INTR_WHILE_WAIT)
 
+enum {
+	DAEMONIZE_NONE        = 0,
+	DAEMONIZE_GRANDCHILD  = 1,
+	DAEMONIZE_NEW_PGROUP  = 2,
+	DAEMONIZE_NEW_SESSION = 3,
+
+	DAEMONIZE_OPTS_GUARD__,
+	MAX_DAEMONIZE_OPTS    = DAEMONIZE_OPTS_GUARD__ - 1
+};
 /*
  * daemonized_tracer supports -D option.
  * With this option, strace forks twice.
@@ -109,7 +120,7 @@ static int opt_intr;
  * wait() etc. Without -D, strace process gets lodged in between,
  * disrupting parent<->child link.
  */
-static bool daemonized_tracer;
+static unsigned int daemonized_tracer;
 
 static int post_attach_sigstop = TCB_IGNORE_ONE_SIGSTOP;
 #define use_seize (post_attach_sigstop == 0)
@@ -245,11 +256,11 @@ usage(void)
 	printf("\
 usage: strace [-ACdffhi" K_OPT "qqrtttTvVwxxyyzZ] [-I n] [-b execve] [-e expr]...\n\
               [-a column] [-o file] [-s strsize] [-X format] [-P path]...\n\
-              [-p pid]...\n\
-	      { -p pid | [-D] [-E var=val]... [-u username] PROG [ARGS] }\n\
+              [-p pid]... [--seccomp-bpf]\n\
+              { -p pid | [-DDD] [-E var=val]... [-u username] PROG [ARGS] }\n\
    or: strace -c[dfwzZ] [-I n] [-b execve] [-e expr]... [-O overhead]\n\
-              [-S sortby] [-P path]... [-p pid]...\n\
-              { -p pid | [-D] [-E var=val]... [-u username] PROG [ARGS] }\n\
+              [-S sortby] [-P path]... [-p pid]... [--seccomp-bpf]\n\
+              { -p pid | [-DDD] [-E var=val]... [-u username] PROG [ARGS] }\n\
 \n\
 Output format:\n\
   -A             open the file provided in the -o option in append mode\n\
@@ -297,7 +308,9 @@ Filtering:\n\
 \n\
 Tracing:\n\
   -b execve      detach on execve syscall\n\
-  -D             run tracer process as a detached grandchild, not as parent\n\
+  -D             run tracer process as a grandchild, not as a parent\n\
+  -DD            run tracer process in a separate process group\n\
+  -DDD           run tracer process in a separate session\n\
   -f             follow forks\n\
   -ff            follow forks with output into separate files\n\
   -I interruptible\n\
@@ -314,9 +327,10 @@ Startup:\n\
   -u username    run command as username handling setuid and/or setgid\n\
 \n\
 Miscellaneous:\n\
+  --seccomp-bpf  enable seccomp-bpf filtering\n\
   -d             enable debug output to stderr\n\
-  -h             print help message\n\
-  -V             print version\n\
+  -h, --help     print help message\n\
+  -V, --version  print version\n\
 "
 /* ancient, no one should use it
 -F -- attempt to follow vforks (deprecated, use -f)\n\
@@ -415,7 +429,7 @@ set_cloexec_flag(int fd)
 {
 	int flags, newflags;
 
-	flags = fcntl(fd, F_GETFD);
+	flags = fcntl_fd(fd, F_GETFD);
 	if (flags < 0) {
 		/* Can happen only if fd is bad.
 		 * Should never happen: if it does, we have a bug
@@ -429,7 +443,7 @@ set_cloexec_flag(int fd)
 	if (flags == newflags)
 		return;
 
-	if (fcntl(fd, F_SETFD, newflags)) /* never fails */
+	if (fcntl_fd(fd, F_SETFD, newflags)) /* never fails */
 		perror_msg_and_die("fcntl(%d, F_SETFD, %#x)", fd, newflags);
 }
 
@@ -1222,6 +1236,27 @@ startup_attach(void)
 		/* grandchild */
 		/* We will be the tracer process. Remember our new pid: */
 		strace_tracer_pid = getpid();
+
+		switch (daemonized_tracer) {
+		case DAEMONIZE_NEW_PGROUP:
+			/*
+			 * If -D is passed twice, create a new process group,
+			 * so we won't be killed by kill(0, ...).
+			 */
+			if (setpgid(0, 0) < 0)
+				perror_msg_and_die("Cannot create a new"
+						   " process group");
+			break;
+		case DAEMONIZE_NEW_SESSION:
+			/*
+			 * If -D is passed thrice, create a new session,
+			 * so we won't be killed upon session termination.
+			 */
+			if (setsid() < 0)
+				perror_msg_and_die("Cannot create a new"
+						   " session");
+			break;
+		}
 	}
 
 	for (tcbi = 0; tcbi < tcbtabsize; tcbi++) {
@@ -1323,6 +1358,10 @@ exec_or_die(void)
 	if (params_for_tracee.child_sa.sa_handler != SIG_DFL)
 		sigaction(SIGCHLD, &params_for_tracee.child_sa, NULL);
 
+	debug_msg("seccomp filter %s",
+		  seccomp_filtering ? "enabled" : "disabled");
+	if (seccomp_filtering)
+		init_seccomp_filter();
 	execv(params->pathname, params->argv);
 	perror_msg_and_die("exec");
 }
@@ -1561,6 +1600,10 @@ ptrace_startup_child(char **argv)
 		 * to create a genuine separate stack and execute on it.
 		 */
 	}
+
+	if (seccomp_filtering)
+		tcp->flags |= TCB_SECCOMP_FILTER;
+
 	/*
 	 * A case where straced process is part of a pipe:
 	 * { sleep 1; yes | head -n99999; } | strace -o/dev/null sh -c 'exec <&-; sleep 9'
@@ -1724,14 +1767,27 @@ init(int argc, char *argv[])
 # error Bug in DEFAULT_QUAL_FLAGS
 #endif
 	qualify("signal=all");
-	while ((c = getopt(argc, argv, "+"
-#ifdef ENABLE_GDBSERVER
-	    "G:"
-#endif
+
+	static const char optstring[] = "+"
 #ifdef ENABLE_STACKTRACE
 	    "k"
 #endif
-	    "a:Ab:cCdDe:E:fFhiI:o:O:p:P:qrs:S:tTu:vVwxX:yzZ")) != EOF) {
+#ifdef ENABLE_GDBSERVER
+	    "G:"
+#endif
+	    "a:Ab:cCdDe:E:fFhiI:o:O:p:P:qrs:S:tTu:vVwxX:yzZ";
+
+	enum {
+		SECCOMP_OPTION = 0x100
+	};
+	static const struct option longopts[] = {
+		{ "seccomp-bpf", no_argument, 0, SECCOMP_OPTION },
+		{ "help", no_argument, 0, 'h' },
+		{ "version", no_argument, 0, 'V' },
+		{ 0, 0, 0, 0 }
+	};
+
+	while ((c = getopt_long(argc, argv, optstring, longopts, NULL)) != EOF) {
 		switch (c) {
 		case 'a':
 			acolumn = string_to_uint(optarg);
@@ -1763,7 +1819,7 @@ init(int argc, char *argv[])
 			debug_flag = 1;
 			break;
 		case 'D':
-			daemonized_tracer = 1;
+			daemonized_tracer++;
 			break;
 		case 'e':
 			qualify(optarg);
@@ -1878,6 +1934,9 @@ init(int argc, char *argv[])
 			add_number_to_set(STATUS_FAILED, status_set);
 			zflags++;
 			break;
+		case SECCOMP_OPTION:
+			seccomp_filtering = true;
+			break;
 		default:
 			if (!tracing_backend_handle_arg(c, optarg))
 				error_msg_and_help(NULL);
@@ -1897,6 +1956,27 @@ init(int argc, char *argv[])
 
 	if (argc < 0)
 		error_msg_and_help("must have command line arguments");
+
+	if (daemonized_tracer > (unsigned int) MAX_DAEMONIZE_OPTS)
+		error_msg_and_help("Too many -D's (%u), maximum supported -D "
+				   "count is %d",
+				   daemonized_tracer, MAX_DAEMONIZE_OPTS);
+
+	if (seccomp_filtering && detach_on_execve) {
+		error_msg("--seccomp-bpf is not enabled because"
+			  " it is not compatible with -b");
+		seccomp_filtering = false;
+	}
+
+	if (seccomp_filtering) {
+		if (nprocs && (!argc || debug_flag))
+			error_msg("--seccomp-bpf is not enabled for processes"
+				  " attached with -p");
+		if (!followfork) {
+			error_msg("--seccomp-bpf implies -f");
+			followfork = 1;
+		}
+	}
 
 	if (optF) {
 		if (followfork) {
@@ -1991,6 +2071,12 @@ init(int argc, char *argv[])
 		ptrace_setoptions |= PTRACE_O_TRACECLONE |
 				     PTRACE_O_TRACEFORK |
 				     PTRACE_O_TRACEVFORK;
+
+	if (seccomp_filtering)
+		check_seccomp_filter();
+	if (seccomp_filtering)
+		ptrace_setoptions |= PTRACE_O_TRACESECCOMP;
+
 	debug_msg("ptrace_setoptions = %#x", ptrace_setoptions);
 	test_ptrace_seize();
 	test_ptrace_get_syscall_info();
@@ -2180,6 +2266,7 @@ print_debug_info(const int pid, int status)
 			[PTRACE_EVENT_VFORK_DONE] = "VFORK_DONE",
 			[PTRACE_EVENT_EXEC]  = "EXEC",
 			[PTRACE_EVENT_EXIT]  = "EXIT",
+			[PTRACE_EVENT_SECCOMP]  = "SECCOMP",
 			/* [PTRACE_EVENT_STOP (=128)] would make biggish array */
 		};
 		const char *e = "??";
@@ -2486,7 +2573,9 @@ ptrace_next_event(void)
 	if (interrupted)
 		return NULL;
 
-        struct tcb *tcp= NULL;
+	invalidate_umove_cache();
+
+	struct tcb *tcp = NULL;
 	struct list_item *elem;
 
 	static EMPTY_LIST(pending_tcps);
@@ -2704,6 +2793,9 @@ ptrace_next_event(void)
 			case PTRACE_EVENT_EXIT:
 				wd->te = TE_STOP_BEFORE_EXIT;
 				break;
+			case PTRACE_EVENT_SECCOMP:
+				wd->te = TE_SECCOMP;
+				break;
 			default:
 				wd->te = TE_RESTART;
 			}
@@ -2835,6 +2927,7 @@ ptrace_restart_process(struct tcb *current_tcp, unsigned int restart_sig,
 static bool
 dispatch_event(const struct tcb_wait_data *wd)
 {
+	unsigned int restart_op;
 	unsigned int restart_sig = 0;
 	enum trace_event te = wd ? wd->te : TE_BREAK;
 	/*
@@ -2842,6 +2935,11 @@ dispatch_event(const struct tcb_wait_data *wd)
 	 * around union wait fixed by glibc commit glibc-2.24~391
 	 */
 	int status = wd ? wd->status : 0;
+
+	if (current_tcp && has_seccomp_filter(current_tcp))
+		restart_op = seccomp_filter_restart_operator(current_tcp);
+	else
+		restart_op = PTRACE_SYSCALL;
 
 	switch (te) {
 	case TE_BREAK:
@@ -2852,6 +2950,27 @@ dispatch_event(const struct tcb_wait_data *wd)
 
 	case TE_RESTART:
 		break;
+
+	case TE_SECCOMP:
+		if (!has_seccomp_filter(current_tcp)) {
+			/*
+			 * We don't know if forks/clones have a seccomp filter
+			 * when they are created, but we can detect it when we
+			 * have a seccomp-stop.
+			 * In such a case, if !seccomp_before_sysentry, we have
+			 * already processed the syscall entry, so we avoid
+			 * processing it a second time.
+			 */
+			current_tcp->flags |= TCB_SECCOMP_FILTER;
+			restart_op = PTRACE_SYSCALL;
+			break;
+		}
+
+		if (seccomp_before_sysentry) {
+			restart_op = PTRACE_SYSCALL;
+			break;
+		}
+		ATTRIBUTE_FALLTHROUGH;
 
 	case TE_SYSCALL_STOP:
 		if (trace_syscall(current_tcp, &restart_sig) < 0) {
@@ -2867,6 +2986,42 @@ dispatch_event(const struct tcb_wait_data *wd)
 			 * normally, via WIFEXITED or WIFSIGNALED wait status.
 			 */
 			return true;
+		}
+		if (has_seccomp_filter(current_tcp)) {
+			/*
+			 * Syscall and seccomp stops can happen in different
+			 * orders depending on kernel.  strace tests this in
+			 * check_seccomp_order_tracer().
+			 *
+			 * Linux 3.5--4.7:
+			 * (seccomp-stop before syscall-entry-stop)
+			 *         +--> seccomp-stop ->-PTRACE_SYSCALL->-+
+			 *         |                                     |
+			 *     PTRACE_CONT                   syscall-entry-stop
+			 *         |                                     |
+			 * syscall-exit-stop <---PTRACE_SYSCALL-----<----+
+			 *
+			 * Linux 4.8+:
+			 * (seccomp-stop after syscall-entry-stop)
+			 *                 syscall-entry-stop
+			 *
+			 *         +---->-----PTRACE_CONT---->----+
+			 *         |                              |
+			 *  syscall-exit-stop               seccomp-stop
+			 *         |                              |
+			 *         +----<----PTRACE_SYSCALL---<---+
+			 *
+			 * Note in Linux 4.8+, we restart in PTRACE_CONT
+			 * after syscall-exit to skip the syscall-entry-stop.
+			 * The next seccomp-stop will be treated as a syscall
+			 * entry.
+			 *
+			 * The line below implements this behavior.
+			 * Note that exiting(current_tcp) actually marks
+			 * a syscall-entry-stop because the flag was inverted
+			 * in the above call to trace_syscall.
+			 */
+			restart_op = exiting(current_tcp) ? PTRACE_SYSCALL : PTRACE_CONT;
 		}
 		break;
 
@@ -3041,10 +3196,6 @@ timer_sighandler(int sig)
 	errno = saved_errno;
 }
 
-#ifdef ENABLE_COVERAGE_GCOV
-extern void __gcov_flush(void);
-#endif
-
 static void ATTRIBUTE_NORETURN
 terminate(void)
 {
@@ -3072,18 +3223,14 @@ terminate(void)
 		/* Child was killed by a signal, mimic that.  */
 		exit_code &= 0xff;
 		signal(exit_code, SIG_DFL);
-#ifdef ENABLE_COVERAGE_GCOV
-		__gcov_flush();
-#endif
+		GCOV_DUMP;
 		raise(exit_code);
 
 		/* Unblock the signal.  */
 		sigset_t mask;
 		sigemptyset(&mask);
 		sigaddset(&mask, exit_code);
-#ifdef ENABLE_COVERAGE_GCOV
-		__gcov_flush();
-#endif
+		GCOV_DUMP;
 		sigprocmask(SIG_UNBLOCK, &mask, NULL);
 
 		/* Paranoia - what if this signal is not fatal?

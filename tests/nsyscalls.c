@@ -2,7 +2,7 @@
  * Check decoding of out-of-range syscalls.
  *
  * Copyright (c) 2015-2016 Dmitry V. Levin <ldv@altlinux.org>
- * Copyright (c) 2016-2018 The strace developers.
+ * Copyright (c) 2016-2019 The strace developers.
  * All rights reserved.
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
@@ -26,13 +26,6 @@ static const struct_sysent syscallent[] = {
 
 #ifndef DEBUG_PRINT
 # define DEBUG_PRINT 0
-#endif
-
-#if defined __X32_SYSCALL_BIT && defined __NR_read \
- && (__X32_SYSCALL_BIT & __NR_read) != 0
-# define SYSCALL_BIT __X32_SYSCALL_BIT
-#else
-# define SYSCALL_BIT 0
 #endif
 
 #if DEBUG_PRINT

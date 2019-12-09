@@ -1,6 +1,6 @@
 #!/bin/sh -ex
 #
-# Copyright (c) 2018 The strace developers.
+# Copyright (c) 2018-2019 The strace developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
@@ -86,7 +86,7 @@ export CC_FOR_BUILD="$CC"
 	exit $rc
 }
 
-j=-j`getconf _NPROCESSORS_ONLN 2> /dev/null` || j=
+j=-j`nproc` || j=
 
 case "${CHECK-}" in
 	coverage)
@@ -94,7 +94,7 @@ case "${CHECK-}" in
 		make -k $j check VERBOSE=${VERBOSE-}
 		codecov --gcov-args=-abcp ||:
 		echo 'BEGIN OF TEST SUITE INFORMATION'
-		tail -n 99999 -- tests*/test-suite.log tests*/ksysent.log
+		tail -n 99999 -- tests*/test-suite.log tests*/ksysent.gen.log
 		echo 'END OF TEST SUITE INFORMATION'
 		;;
 	valgrind)
@@ -106,7 +106,7 @@ case "${CHECK-}" in
 					rc=$?
 		done
 		echo 'BEGIN OF TEST SUITE INFORMATION'
-		tail -n 99999 -- tests*/test-suite*.log tests*/ksysent.log ||
+		tail -n 99999 -- tests*/test-suite*.log tests*/ksysent.gen.log ||
 			rc=$?
 		echo 'END OF TEST SUITE INFORMATION'
 		[ "$rc" -eq 0 ]

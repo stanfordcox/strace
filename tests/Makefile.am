@@ -7,6 +7,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 OS = linux
+CC = @CC@
 ARCH = @arch@
 NATIVE_ARCH = @arch_native@
 SIZEOF_KERNEL_LONG_T = @SIZEOF_KERNEL_LONG_T@
@@ -46,7 +47,9 @@ libtests_a_SOURCES = \
 	print_quoted_string.c \
 	print_time.c \
 	printflags.c \
-	printxval.c \
+	printxval-Xabbrev.c \
+	printxval-Xraw.c \
+	printxval-Xverbose.c \
 	signal2name.c \
 	skip_unavailable.c \
 	sprintrc.c \
@@ -75,6 +78,7 @@ check_PROGRAMS = $(PURE_EXECUTABLES) \
 	attach-p-cmd-cmd \
 	attach-p-cmd-p \
 	block_reset_raise_run \
+	block_reset_run \
 	bpf-obj_get_info_by_fd \
 	bpf-obj_get_info_by_fd-prog \
 	bpf-obj_get_info_by_fd-prog-v \
@@ -86,10 +90,16 @@ check_PROGRAMS = $(PURE_EXECUTABLES) \
 	check_sigign \
 	clone_parent \
 	clone_ptrace \
+	clone3-success \
+	clone3-success-Xabbrev \
+	clone3-success-Xraw \
+	clone3-success-Xverbose \
 	count-f \
 	delay \
 	execve-v \
 	execveat-v \
+	filter_seccomp-flag \
+	filter_seccomp-perf \
 	filter-unavailable \
 	fork-f \
 	gdbrsp \
@@ -101,8 +111,13 @@ check_PROGRAMS = $(PURE_EXECUTABLES) \
 	int_0x80 \
 	ioctl_dm-v \
 	ioctl_evdev-success \
+	ioctl_evdev-success-Xabbrev \
+	ioctl_evdev-success-Xraw \
+	ioctl_evdev-success-Xverbose \
 	ioctl_evdev-success-v \
-	ioctl_evdev-v \
+	ioctl_evdev-success-v-Xabbrev \
+	ioctl_evdev-success-v-Xraw \
+	ioctl_evdev-success-v-Xverbose \
 	ioctl_loop-nv \
 	ioctl_loop-v \
 	ioctl_nsfs \
@@ -164,6 +179,7 @@ check_PROGRAMS = $(PURE_EXECUTABLES) \
 	status-unfinished-threads \
 	syslog-success \
 	threads-execve \
+	tracer_ppid_pgid_sid \
 	unblock_reset_raise \
 	unix-pair-send-recv \
 	unix-pair-sendto-recvfrom \
@@ -236,6 +252,7 @@ DECODER_TESTS = \
 	caps-abbrev.test \
 	caps.test \
 	clone-flags.test \
+	clone3-success.test \
 	eventfd.test \
 	execve-v.test \
 	execve.test \
@@ -246,7 +263,6 @@ DECODER_TESTS = \
 	int_0x80.test \
 	inotify_init-y.test \
 	ioctl.test \
-	ioctl_evdev-success-v.test \
 	ioctl_evdev-success.test \
 	ioctl_perf-success.test \
 	ipc_msgbuf.test \
@@ -315,6 +331,7 @@ MISC_TESTS = \
 	detach-sleeping.test \
 	detach-stopped.test \
 	fflush.test \
+	filter_seccomp-perf.test \
 	filter-unavailable.test \
 	filtering_fd-syntax.test \
 	filtering_syscall-syntax.test \
@@ -323,7 +340,6 @@ MISC_TESTS = \
 	inject-nf.test \
 	interactive_block.test \
 	kill_child.test \
-	ksysent.test \
 	localtime.test \
 	looping_threads.test \
 	opipe.test \
@@ -352,6 +368,9 @@ MISC_TESTS = \
 	status-none-threads.test \
 	status-unfinished-threads.test \
 	strace-C.test \
+	strace-D.test \
+	strace-DD.test \
+	strace-DDD.test \
 	strace-E.test \
 	strace-S.test \
 	strace-T.test \
@@ -365,6 +384,7 @@ MISC_TESTS = \
 	strace-ttt.test \
 	termsig.test \
 	threads-execve.test \
+	umovestr_cached.test \
 	# end of MISC_TESTS
 
 TESTS = $(GEN_TESTS) $(DECODER_TESTS) $(MISC_TESTS) $(STACKTRACE_TESTS)
@@ -397,6 +417,8 @@ EXTRA_DIST = \
 	eventfd.expected \
 	fadvise.h \
 	fcntl-common.c \
+	filter_seccomp.in \
+	filter_seccomp.sh \
 	filter-unavailable.expected \
 	fstatat.c \
 	fstatx.c \
@@ -408,6 +430,8 @@ EXTRA_DIST = \
 	init_delete_module.h \
 	ioctl_kvm_run_common.c \
 	ipc.sh \
+	kernel_old_timespec.h \
+	kernel_old_timex.h \
 	ksysent.sed \
 	lstatx.c \
 	match.awk \
@@ -417,6 +441,7 @@ EXTRA_DIST = \
 	pipe.expected \
 	print_user_desc.c \
 	printsignal.c \
+	printxval.c \
 	process_vm_readv_writev.c \
 	pure_executables.list \
 	qual_fault-exit_group.expected \
@@ -430,6 +455,7 @@ EXTRA_DIST = \
 	run.sh \
 	sched.in \
 	scno_tampering.sh \
+	semop-common.c \
 	setfsugid.c \
 	setresugid.c \
 	setreugid.c \
@@ -440,6 +466,9 @@ EXTRA_DIST = \
 	stack-fcall.h \
 	status-detached.expected \
 	strace-C.expected \
+	strace-D.expected \
+	strace-DD.expected \
+	strace-DDD.expected \
 	strace-E.expected \
 	strace-T.expected \
 	strace-ff.expected \

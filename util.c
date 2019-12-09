@@ -360,41 +360,6 @@ printnum_fd(struct tcb *const tcp, const kernel_ulong_t addr)
 	return true;
 }
 
-#ifndef current_wordsize
-bool
-printnum_long_int(struct tcb *const tcp, const kernel_ulong_t addr,
-		  const char *const fmt_long, const char *const fmt_int)
-{
-	if (current_wordsize > sizeof(int)) {
-		return printnum_int64(tcp, addr, fmt_long);
-	} else {
-		return printnum_int(tcp, addr, fmt_int);
-	}
-}
-
-bool
-printnum_addr_long_int(struct tcb *tcp, const kernel_ulong_t addr)
-{
-	if (current_wordsize > sizeof(int)) {
-		return printnum_addr_int64(tcp, addr);
-	} else {
-		return printnum_addr_int(tcp, addr);
-	}
-}
-#endif /* !current_wordsize */
-
-#ifndef current_klongsize
-bool
-printnum_addr_klong_int(struct tcb *tcp, const kernel_ulong_t addr)
-{
-	if (current_klongsize > sizeof(int)) {
-		return printnum_addr_int64(tcp, addr);
-	} else {
-		return printnum_addr_int(tcp, addr);
-	}
-}
-#endif /* !current_klongsize */
-
 /**
  * Prints time to a (static internal) buffer and returns pointer to it.
  * Returns NULL if the provided time specification is not correct.
@@ -1276,6 +1241,24 @@ print_uint64_array_member(struct tcb *tcp, void *elem_buf, size_t elem_size,
 	return true;
 }
 
+bool
+print_xint32_array_member(struct tcb *tcp, void *elem_buf, size_t elem_size,
+			  void *data)
+{
+	tprintf("%#" PRIx32, *(uint32_t *) elem_buf);
+
+	return true;
+}
+
+bool
+print_xint64_array_member(struct tcb *tcp, void *elem_buf, size_t elem_size,
+			  void *data)
+{
+	tprintf("%#" PRIx64, *(uint64_t *) elem_buf);
+
+	return true;
+}
+
 /*
  * Iteratively fetch and print up to nmemb elements of elem_size size
  * from the array that starts at tracee's address start_addr.
@@ -1311,7 +1294,7 @@ bool
 print_array_ex(struct tcb *const tcp,
 	       const kernel_ulong_t start_addr,
 	       const size_t nmemb,
-	       void *const elem_buf,
+	       void *elem_buf,
 	       const size_t elem_size,
 	       tfetch_mem_fn tfetch_mem_func,
 	       print_fn print_func,
@@ -1334,7 +1317,10 @@ print_array_ex(struct tcb *const tcp,
 	const kernel_ulong_t end_addr = start_addr + size;
 
 	if (end_addr <= start_addr || size / elem_size != nmemb) {
-		printaddr(start_addr);
+		if (tfetch_mem_func)
+			printaddr(start_addr);
+		else
+			tprints("???");
 		return false;
 	}
 
@@ -1344,19 +1330,25 @@ print_array_ex(struct tcb *const tcp,
 	kernel_ulong_t cur;
 	kernel_ulong_t idx = 0;
 	enum xlat_style xlat_style = flags & XLAT_STYLE_MASK;
+	bool truncated = false;
 
 	for (cur = start_addr; cur < end_addr; cur += elem_size, idx++) {
 		if (cur != start_addr)
 			tprints(", ");
 
-		if (!tfetch_mem_func(tcp, cur, elem_size, elem_buf)) {
-			if (cur == start_addr)
-				printaddr(cur);
-			else {
-				tprints("...");
-				printaddr_comment(cur);
+		if (tfetch_mem_func) {
+			if (!tfetch_mem_func(tcp, cur, elem_size, elem_buf)) {
+				if (cur == start_addr)
+					printaddr(cur);
+				else {
+					tprints("...");
+					printaddr_comment(cur);
+					truncated = true;
+				}
+				break;
 			}
-			break;
+		} else {
+			elem_buf = (void *) (uintptr_t) cur;
 		}
 
 		if (cur == start_addr)
@@ -1365,6 +1357,7 @@ print_array_ex(struct tcb *const tcp,
 		if (cur >= abbrev_end) {
 			tprints("...");
 			cur = end_addr;
+			truncated = true;
 			break;
 		}
 
@@ -1386,8 +1379,17 @@ print_array_ex(struct tcb *const tcp,
 			break;
 		}
 	}
-	if (cur != start_addr)
+
+	if ((cur != start_addr) || !tfetch_mem_func) {
+		if ((flags & PAF_ARRAY_TRUNCATED) && !truncated) {
+			if (cur != start_addr)
+				tprints(", ");
+
+			tprints("...");
+		}
+
 		tprints("]");
+	}
 
 	return cur >= end_addr;
 }

@@ -140,6 +140,8 @@ strace_SOURCES =	\
 	file_ioctl.c	\
 	filter.h	\
 	filter_qualify.c \
+	filter_seccomp.c \
+	filter_seccomp.h \
 	flock.c		\
 	flock.h		\
 	fs_x_ioctl.c	\
@@ -372,6 +374,7 @@ strace_SOURCES =	\
 	v4l2.c		\
 	wait.c		\
 	wait.h		\
+	watchdog_ioctl.c \
 	xattr.c		\
 	xfs_quota_stat.h \
 	xlat.c		\
@@ -440,6 +443,7 @@ EXTRA_DIST =				\
 	LGPL-2.1-or-later		\
 	README-configure		\
 	README-linux-ptrace		\
+	copyright-year-gen		\
 	debian/changelog		\
 	debian/compat			\
 	debian/control			\
@@ -454,8 +458,10 @@ EXTRA_DIST =				\
 	debian/strace64.install		\
 	debian/strace64.manpages	\
 	debian/watch			\
+	file-date-gen			\
 	gen_bpf_attr_check.sh		\
 	generate_sen.sh			\
+	git-version-gen			\
 	ioctl_iocdef.c			\
 	ioctlsort.c			\
 	linux/32/ioctls_inc.h		\
@@ -765,21 +771,16 @@ EXTRA_DIST =				\
 	linux/powerpc64le/userent.h	\
 	linux/ptrace_pokeuser.c		\
 	linux/raw_syscall.h		\
-	linux/riscv/arch_defs_.h	\
-	linux/riscv/arch_get_personality.c \
-	linux/riscv/arch_regs.c		\
-	linux/riscv/get_error.c		\
-	linux/riscv/get_scno.c		\
-	linux/riscv/get_syscall_args.c	\
-	linux/riscv/ioctls_arch0.h	\
-	linux/riscv/ioctls_arch1.h	\
-	linux/riscv/ioctls_inc0.h	\
-	linux/riscv/ioctls_inc1.h	\
-	linux/riscv/raw_syscall.h	\
-	linux/riscv/set_error.c		\
-	linux/riscv/set_scno.c		\
-	linux/riscv/syscallent.h	\
-	linux/riscv/syscallent1.h	\
+	linux/riscv64/arch_regs.c		\
+	linux/riscv64/get_error.c		\
+	linux/riscv64/get_scno.c		\
+	linux/riscv64/get_syscall_args.c	\
+	linux/riscv64/ioctls_arch0.h	\
+	linux/riscv64/ioctls_inc0.h	\
+	linux/riscv64/raw_syscall.h	\
+	linux/riscv64/set_error.c		\
+	linux/riscv64/set_scno.c		\
+	linux/riscv64/syscallent.h	\
 	linux/rt_sigframe.h		\
 	linux/s390/arch_defs_.h		\
 	linux/s390/arch_regs.c		\
@@ -1115,8 +1116,8 @@ mpers_NAME =
 mpers_PREFIX = $(mpers_NAME)_
 mpers_DEFS = $(DEFS)
 mpers_INCLUDES = $(DEFAULT_INCLUDES) $(INCLUDES)
-mpers_CPPFLAGS = $(strace_CPPFLAGS) $(CPPFLAGS)
-mpers_sh_opts = $(mpers_DEFS) $(mpers_INCLUDES) $(mpers_CPPFLAGS)
+mpers_CPPFLAGS = $(CPPFLAGS)
+mpers_sh_opts = $(mpers_DEFS) $(mpers_INCLUDES) $(strace_CPPFLAGS) $(mpers_CPPFLAGS)
 libmpers_CPPFLAGS = $(strace_CPPFLAGS) -DIN_MPERS
 libmpers_CFLAGS = $(strace_CFLAGS)
 
@@ -1126,11 +1127,11 @@ mpers-m%.stamp: $(srcdir_mpers_source_files) | printers.h
 	for f in $^; do \
 		D="$(D)" \
 		READELF="$(READELF)" \
-		CC="$(CC)" \
+		CC="$(mpers_CC)" \
 		CFLAGS="$(mpers_sh_opts) -DMPERS_IS_$(mpers_NAME)" \
 		CPP="$(CPP)" \
 		CPPFLAGS="$(mpers_sh_opts) -DIN_MPERS -DMPERS_IS_$(mpers_NAME)" \
-		$(srcdir)/mpers.sh $(mpers_NAME) $(mpers_CC_FLAGS) $$f || exit; \
+		$(srcdir)/mpers.sh $(mpers_NAME) "$(mpers_CC_FLAGS)" $$f || exit; \
 	done
 	> $@
 
@@ -1201,7 +1202,9 @@ BUILT_SOURCES += $(mpers_m32_targets)
 CLEANFILES    += $(mpers_m32_targets)
 
 $(mpers_m32_targets): mpers_NAME = m32
-$(mpers_m32_targets): mpers_CC_FLAGS = @cc_flags_m32@
+$(mpers_m32_targets): mpers_CC_FLAGS = @CFLAGS_FOR_M32@ @cc_flags_m32@
+$(mpers_m32_targets): mpers_CPPFLAGS = @CPPFLAGS_FOR_M32@
+$(mpers_m32_targets): mpers_CC = @CC_FOR_M32@
 
 endif # HAVE_M32_MPERS
 
@@ -1218,7 +1221,9 @@ BUILT_SOURCES += $(mpers_mx32_targets)
 CLEANFILES    += $(mpers_mx32_targets)
 
 $(mpers_mx32_targets): mpers_NAME = mx32
-$(mpers_mx32_targets): mpers_CC_FLAGS = @cc_flags_mx32@
+$(mpers_mx32_targets): mpers_CC_FLAGS = @CFLAGS_FOR_MX32@ @cc_flags_mx32@
+$(mpers_mx32_targets): mpers_CPPFLAGS = @CPPFLAGS_FOR_MX32@
+$(mpers_mx32_targets): mpers_CC = @CC_FOR_MX32@
 
 endif # HAVE_MX32_MPERS
 

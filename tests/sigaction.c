@@ -2,6 +2,7 @@
  * Check decoding of sigaction syscall.
  *
  * Copyright (c) 2014-2018 Dmitry V. Levin <ldv@altlinux.org>
+ * Copyright (c) 2014-2019 The strace developers.
  * All rights reserved.
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
@@ -156,7 +157,7 @@ main(void)
 	sigdelset(mask.libc, SIGHUP);
 
 	memcpy(new_act->mask, mask.old, sizeof(mask.old));
-# ifdef SA_RESTORER
+# if defined SA_RESTORER && !(defined ALPHA || defined MIPS)
 	new_act->flags = SA_RESTORER;
 	new_act->restorer = (unsigned long) 0xdeadfacecafef00dULL;
 #  define SA_RESTORER_FMT ", sa_flags=SA_RESTORER, sa_restorer=%#lx"

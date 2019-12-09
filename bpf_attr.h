@@ -59,11 +59,12 @@ struct BPF_MAP_LOOKUP_ELEM_struct {
 	uint32_t map_fd;
 	uint64_t ATTRIBUTE_ALIGNED(8) key;
 	uint64_t ATTRIBUTE_ALIGNED(8) value;
+	uint64_t ATTRIBUTE_ALIGNED(8) flags;
 };
 
 # define BPF_MAP_LOOKUP_ELEM_struct_size \
 	sizeof(struct BPF_MAP_LOOKUP_ELEM_struct)
-# define expected_BPF_MAP_LOOKUP_ELEM_struct_size 24
+# define expected_BPF_MAP_LOOKUP_ELEM_struct_size 32
 
 struct BPF_MAP_UPDATE_ELEM_struct {
 	uint32_t map_fd;
@@ -194,6 +195,9 @@ struct BPF_PROG_GET_NEXT_ID_struct {
 
 # define BPF_MAP_GET_NEXT_ID_struct BPF_PROG_GET_NEXT_ID_struct
 # define BPF_MAP_GET_NEXT_ID_struct_size BPF_PROG_GET_NEXT_ID_struct_size
+
+# define BPF_BTF_GET_NEXT_ID_struct BPF_PROG_GET_NEXT_ID_struct
+# define BPF_BTF_GET_NEXT_ID_struct_size BPF_PROG_GET_NEXT_ID_struct_size
 
 struct BPF_PROG_GET_FD_BY_ID_struct {
 	uint32_t prog_id;

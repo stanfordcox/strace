@@ -235,7 +235,6 @@ gdb_recv_signal(struct gdb_stop_reply *stop)
 	char *info = strdupa(reply + 3);
 	char *savetok = NULL, *nr;
 
-	bool have_thread = false;
 	for (nr = strtok_r(info, ";", &savetok); nr;
 	    nr = strtok_r(NULL, ";", &savetok)) {
 		char *n = strtok(nr, ":");
@@ -246,7 +245,6 @@ gdb_recv_signal(struct gdb_stop_reply *stop)
 
 		if (!strcmp(n, "thread")) {
 			int pid, tid;
-			have_thread = true;
 			gdb_parse_thread(r, &pid, &tid);
 			if (pid != gdb_w0_pid) {
 				general_pid = stop->pid = pid;
@@ -367,7 +365,7 @@ gdb_recv_stop(struct gdb_stop_reply *cached_reply)
 	 * 7) server sends: OK
 	 */
 
-	if (gdb_has_non_stop(gdb))
+	if (gdb_has_non_stop(gdb)) {
 		/* Do we have an out of order notification?  (see gdb_recv) */
 		if (cached_reply)
 			gdb_ok();	/* Only 2) required */
@@ -375,7 +373,7 @@ gdb_recv_stop(struct gdb_stop_reply *cached_reply)
 			while (stop.reply[0] != 'T' && stop.reply[0] != 'W')
 				stop.reply = gdb_recv(gdb, &stop.size, true);
 		}
-
+	}
 	if (!cached_reply && gdb_has_non_stop(gdb) && (stop.reply[0] == 'T')) {
 		do {			/* 4) 5) 6) 7) */
 			gdb_send_cstr(gdb, "vStopped");
@@ -543,7 +541,7 @@ gdb_find_thread(int tid, bool current, bool multiprocess)
 		if (tid == gdb_exit_group_pid)
 			return NULL;
 		tcp = alloctcb(tid);
-		after_successful_attach(tcp, TCB_GDB_CONT_PID_TID);
+		after_successful_attach(tcp, 0);
 
 		if (!current) {
 			char cmd[] = "Hgpxxxxxxxx.xxxxxxxx";
@@ -630,7 +628,7 @@ gdb_end_init(void)
 }
 
 void
-gdb_cleanup(void)
+gdb_cleanup(int fatal_sig)
 {
 	ptrace_cleanup ();
 	if (gdb)
@@ -1097,7 +1095,6 @@ gdb_get_all_regs(pid_t tid, size_t *size)
 		 * NB: this assumes gdbserver's current thread is also tid.  If that
 		 * may not be the case, we should send "HgTID" first, and restore.
 		 */
-		char cmd[] = "Hgp0.0";
 		gdb_w0_pid = 0;
 	}
 
@@ -1365,7 +1362,6 @@ gdb_restart_process(struct tcb *current_tcp, unsigned int restart_sig,
 			 * pid.tid is the thread gdbserver is focused
 			 * on */
 			char cmd[] = "vCont;c:xxxxxxxx.xxxxxxxx";
-			struct tcb *general_tcp = current_tcp ? gdb_find_thread(general_tid, true, false) : NULL;
 
 			debug_msg("current_tcp %d general_pid %d general_tid %d gdb_group_pid %d gdb_exit_group_pid %d gdb_w0_pid %d\n", current_tcp ? current_tcp->pid : 0, general_pid, general_tid, gdb_group_pid, gdb_exit_group_pid, gdb_w0_pid);
 			if (gdb_has_non_stop(gdb) && thread_count) {

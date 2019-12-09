@@ -1,7 +1,7 @@
 #!/bin/sh
 #
 # Copyright (c) 2011-2016 Dmitry V. Levin <ldv@altlinux.org>
-# Copyright (c) 2011-2018 The strace developers.
+# Copyright (c) 2011-2019 The strace developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
@@ -275,6 +275,20 @@ require_min_kernel_version_or_skip()
 		skip_ "the kernel release $uname_r is not $1 or newer"
 }
 
+# Usage: require_min_nproc 2
+require_min_nproc()
+{
+	local min_nproc
+	min_nproc="$1"; shift
+
+	check_prog
+	local nproc
+	nproc="$(nproc)"
+
+	[ "$nproc" -ge "$min_nproc" ] ||
+		framework_skip_ "nproc = $nproc is less than $min_nproc"
+}
+
 # Usage: grep_pid_status $pid GREP-OPTIONS...
 grep_pid_status()
 {
@@ -352,6 +366,10 @@ test_trace_expr()
 		< negative.list
 }
 
+test_prog_set()
+{
+	test_pure_prog_set "$@" < "$srcdir/$NAME.in"
+}
 
 check_prog cat
 check_prog rm
