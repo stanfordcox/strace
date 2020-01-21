@@ -2405,7 +2405,7 @@ maybe_switch_current_tcp(void)
 	return tcp;
 }
 
-void
+static void
 print_signalled(struct tcb *tcp, const int pid, int status)
 {
 	if (pid == strace_child) {
@@ -2423,7 +2423,7 @@ print_signalled(struct tcb *tcp, const int pid, int status)
 	}
 }
 
-void
+static void
 print_exited(struct tcb *tcp, const int pid, int status)
 {
 	if (pid == strace_child) {
@@ -2439,7 +2439,7 @@ print_exited(struct tcb *tcp, const int pid, int status)
 	}
 }
 
-void
+static void
 print_stopped(struct tcb *tcp, const siginfo_t *si, const unsigned int sig)
 {
 	if (cflag != CFLAG_ONLY_STATS

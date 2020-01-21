@@ -44,9 +44,6 @@ struct tcb *pid2tcb(int pid);
 struct tcb *alloctcb(int pid);
 void droptcb(struct tcb *tcp);
 void after_successful_attach(struct tcb *tcp, const unsigned int flags);
-void print_signalled(struct tcb *tcp, const int pid, int status);
-void print_exited(struct tcb *tcp, const int pid, int status);
-void print_stopped(struct tcb *tcp, const siginfo_t *si, const unsigned int sig);
 void set_sighandler(int signo, void (*sighandler)(int), struct sigaction *oldact);
 void set_sigaction(int signo, void (*sighandler)(int), struct sigaction *oldact);
 bool gdb_restart_process(struct tcb *current_tcp, unsigned int restart_sig, void *data);
@@ -71,7 +68,6 @@ static int thread_count = 0;	/* */
 static const char process_needle[] = ";process:";
 char *gdbserver = NULL;
 
-/* TODO stop is needed only to next_event */
 static struct gdb_stop_reply stop;
 static struct gdb_conn* gdb = NULL;
 /* TODO Move/merge this to/with gdb_conn */
@@ -293,7 +289,7 @@ static bool
 gdb_ok(void)
 {
 	size_t size;
-	char *reply = gdb_recv(gdb, &size, false);
+	char *reply = gdb_recv(gdb, &size, recv_want_ok);
 	bool ok = size == 2 && !strcmp(reply, "OK");
 	free(reply);
 	return ok;
@@ -325,7 +321,7 @@ gdb_recv_exit(struct gdb_stop_reply *stop)
 
 			size_t this_size;
 			gdb_send_cstr(gdb, "vStopped");
-			reply = gdb_recv(gdb, &this_size, true);
+			reply = gdb_recv(gdb, &this_size, recv_want_stop);
 			if (strcmp(reply, "OK") == 0)
 				break;
 			push_notification(reply, this_size);
@@ -353,7 +349,7 @@ gdb_recv_stop(struct gdb_stop_reply *cached_reply)
 		/* pop_notification gave us a cached notification */
 		stop = *cached_reply;
 	else
-		stop.reply = gdb_recv(gdb, &stop.size, true);
+		stop.reply = gdb_recv(gdb, &stop.size, recv_want_stop);
 
 	/* non-stop packet order:
 	 * 1) client sends: $vCont;c (in gdb_restart_process)
@@ -371,13 +367,13 @@ gdb_recv_stop(struct gdb_stop_reply *cached_reply)
 			gdb_ok();	/* Only 2) required */
 		else {			/* 2) 3) */
 			while (stop.reply[0] != 'T' && stop.reply[0] != 'W')
-				stop.reply = gdb_recv(gdb, &stop.size, true);
+				stop.reply = gdb_recv(gdb, &stop.size, recv_want_stop);
 		}
 	}
 	if (!cached_reply && gdb_has_non_stop(gdb) && (stop.reply[0] == 'T')) {
 		do {			/* 4) 5) 6) 7) */
 			gdb_send_cstr(gdb, "vStopped");
-			reply = gdb_recv(gdb, &reply_size, true);
+			reply = gdb_recv(gdb, &reply_size, recv_want_stop);
 			if (strcmp(reply, "OK") == 0)
 				break;
 			push_notification(reply, reply_size);
@@ -441,7 +437,7 @@ gdb_start_init(int argc, char *argv[])
 
 	size_t size;
 	bool gdb_fork;
-	char *reply = gdb_recv(gdb, &size, false);
+	char *reply = gdb_recv(gdb, &size, recv_want_other);
 	gdb_multiprocess = strstr(reply, "multiprocess+") != NULL;
 	if (!gdb_multiprocess)
 		error_msg("couldn't enable GDB server multiprocess mode");
@@ -488,7 +484,7 @@ gdb_start_init(int argc, char *argv[])
 		error_msg("couldn't enable GDB server signal passing");
 
 	gdb_send_cstr(gdb, "vCont?");
-	reply = gdb_recv(gdb, &size, false);
+	reply = gdb_recv(gdb, &size, recv_want_other);
 	gdb_vcont = strncmp(reply, "vCont", 5) == 0;
 	if (!gdb_vcont)
 		error_msg("GDB server doesn't support vCont");
@@ -572,7 +568,7 @@ gdb_enumerate_threads(void)
 	gdb_send_cstr(gdb, "qfThreadInfo");
 
 	size_t size;
-	char *reply = gdb_recv(gdb, &size, false);
+	char *reply = gdb_recv(gdb, &size, recv_want_other);
 	while (reply[0] == 'm') {
 		char *thread;
 		for (thread = strtok(reply + 1, ","); thread;
@@ -590,7 +586,7 @@ gdb_enumerate_threads(void)
 		free(reply);
 
 		gdb_send_cstr(gdb, "qsThreadInfo");
-		reply = gdb_recv(gdb, &size, false);
+		reply = gdb_recv(gdb, &size, recv_want_other);
 	}
 
 	free(reply);
@@ -880,21 +876,14 @@ gdb_next_event(void)
 	struct tcb *tcp = NULL;
 	siginfo_t *si = &wd->si;
 
-	debug_msg("Entering %s\n", __FUNCTION__);
-	/* Do we have a process exit reply whose pid matches the original pid? */
-	if (stop.reply && stop.reply[0] == 'W')
-	{
-		const char *process = strstr(stop.reply, process_needle);
-		if (process) {
-			gdb_w0_pid = gdb_decode_hex_str(process +
-						       sizeof(process_needle) - 1);
-			if (gdb_w0_pid == gdb_group_pid) {
-				wd->te = TE_BREAK;
-				GDB_NEXT_EVENT_RETURN (wd);
-			}
-		}
-	}
+	debug_msg("Entering %s previous_state %s\n", __FUNCTION__, trace_event_str[wd->te]);
 	if (interrupted) {
+		wd->te = TE_BREAK;
+		GDB_NEXT_EVENT_RETURN (wd);
+	}
+
+	/* If we previously received a process exit reply then exit strace dispatch */
+	if (stop.reply && stop.reply[0] == 'W' && wd->te == TE_EXITED) {
 		wd->te = TE_BREAK;
 		GDB_NEXT_EVENT_RETURN (wd);
 	}
@@ -905,6 +894,19 @@ gdb_next_event(void)
  		stop = gdb_recv_stop(&stop);
 	else
 		stop = gdb_recv_stop(NULL);
+
+	/* If we received a process exit reply then exit */
+	if (stop.reply && stop.reply[0] == 'W') {
+		const char *process = strstr(stop.reply, process_needle);
+		if (process) {
+			gdb_w0_pid = gdb_decode_hex_str(process +
+						       sizeof(process_needle) - 1);
+			if (gdb_w0_pid == gdb_group_pid) {
+				wd->te = TE_EXITED;
+				GDB_NEXT_EVENT_RETURN (wd);
+			}
+		}
+	}
 
 	if (stop.size == 0)
 		error_msg_and_die("GDB server gave an empty stop reply!?");
@@ -1100,7 +1102,7 @@ gdb_get_all_regs(pid_t tid, size_t *size)
 
 	gdb_send_cstr(gdb, "g");
 
-	return gdb_recv(gdb, size, false);
+	return gdb_recv(gdb, size, recv_want_other);
 }
 
 
@@ -1166,7 +1168,7 @@ gdb_read_mem(pid_t tid, long addr, unsigned int len, bool check_nil, char *out)
 		gdb_send_str(gdb, cmd);
 
 		size_t size;
-		char *reply = gdb_recv(gdb, &size, false);
+		char *reply = gdb_recv(gdb, &size, recv_want_other);
 
 		/*
 		 * Try fetching a buffer.  gdbserver may return an error
@@ -1338,10 +1340,9 @@ gdb_restart_process(struct tcb *current_tcp, unsigned int restart_sig,
 	int gdb_sig = 0 /*stop.code*/;
 	pid_t tid = current_tcp ? current_tcp->pid : 0;
 
-//	if (have_notification())
-//		return true;
-
-	if (gdb_sig) {
+	if (gdb_w0_pid == gdb_group_pid)
+		return true;
+	else if (gdb_sig) {
 		if (gdb_vcont) {
 			/* send the signal to this target and continue everyone else */
 			char cmd[] = "vCont;Cxx:xxxxxxxxxxx;c";

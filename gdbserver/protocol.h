@@ -54,7 +54,8 @@ void gdb_send_str(struct gdb_conn *conn, const char *command);
 #define gdb_send_cstr(_conn, _str) \
 	gdb_send((_conn), _str, sizeof(_str) + MUST_BE_ARRAY(_str) - 1)
 
-char *gdb_recv(struct gdb_conn *conn, /* out */ size_t *size, bool want_stop);
+enum gdb_recv_type {recv_want_other = 0, recv_want_stop = 1, recv_want_ok = 2};
+char *gdb_recv(struct gdb_conn *conn, /* out */ size_t *size, enum gdb_recv_type);
 
 bool gdb_start_noack(struct gdb_conn *conn);
 

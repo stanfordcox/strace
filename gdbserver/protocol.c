@@ -355,7 +355,7 @@ gdb_send(struct gdb_conn *conn, const char *command, size_t size)
 
 	if (retval) {
 		size_t size;
-		char *reply = gdb_recv(conn, &size, false);
+		char *reply = gdb_recv(conn, &size, recv_want_other);
 		debug_msg("readahead of %s\n",reply);
 	}
 
@@ -597,27 +597,36 @@ recv_packet(FILE *in, size_t *ret_size, bool* ret_sum_ok)
 }
 
 char *
-gdb_recv(struct gdb_conn *conn, size_t *size, bool want_stop)
+gdb_recv(struct gdb_conn *conn, size_t *size, enum gdb_recv_type recv_type)
 {
 	char *reply;
 	bool acked = false;
 
 	do {
+		bool want_ok_got_ok = false;
 		reply = recv_packet(conn->in, size, &acked);
+		const char *recv_type_str [] = {"want other", "want stop", "want ok"};
+		debug_msg ("gdb_recv %.32s %s\n",reply,recv_type_str[recv_type]);
 
 		/* We received an asynchronous non-stop notification
 		 * while expecting another packet.  Cache it for later
 		 * (See gdb_recv_stop for non-stop protocol description)
+		 * If we were expecting "OK" then we need that OK plus
+		 * the final OK terminating the notification sequence.
 		 */
-		/* XXX it's better to preserve (some of) %Stop: header */
-		/* XXX What if checksum is wrong? */
-		if (!want_stop && strncmp(reply, "T05syscall", 10) == 0) do {
+
+		if (recv_type != recv_want_stop && strncmp(reply, "T05syscall", 10) == 0) do {
 			push_notification(reply, *size);
 			gdb_send(conn, "vStopped", 8);
 			reply = recv_packet(conn->in, size, &acked);
 			if (strcmp(reply, "OK") == 0) {
-				reply = recv_packet(conn->in, size, &acked);
-				break;
+				if (recv_type == recv_want_ok && want_ok_got_ok == false)
+					want_ok_got_ok = true;
+				else {
+					reply = recv_packet(conn->in, size, &acked);
+					if (strncmp(reply, "T05syscall", 10) != 0)
+						break;
+				}
 			}
 		} while (true);
 
@@ -640,7 +649,7 @@ gdb_start_noack(struct gdb_conn *conn)
 	gdb_send(conn, cmd, sizeof(cmd) - 1);
 
 	size_t size;
-	char *reply = gdb_recv(conn, &size, false);
+	char *reply = gdb_recv(conn, &size, recv_want_other);
 	bool ok = size == 2 && !strcmp(reply, "OK");
 	free(reply);
 
@@ -687,7 +696,7 @@ gdb_xfer_read(struct gdb_conn *conn, const char *object, const char *annex,
 		free(cmd);
 
 		size_t size;
-		char *reply = gdb_recv(conn, &size, false);
+		char *reply = gdb_recv(conn, &size, recv_want_other);
 		char c = reply[0];
 		switch (c) {
 		case 'm':
@@ -744,7 +753,7 @@ gdb_vfile(struct gdb_conn *conn, const char *operation, const char *parameters)
 	free(cmd);
 
 	size_t size;
-	res.reply = gdb_recv(conn, &size, false);
+	res.reply = gdb_recv(conn, &size, recv_want_other);
 	if (size > 1 && res.reply[0] == 'F') {
 		/* F result [, errno] [; attachment] */
 		res.result = gdb_decode_signed_hex_str(res.reply + 1);
