@@ -1364,10 +1364,16 @@ gdb_restart_process(struct tcb *current_tcp, unsigned int restart_sig,
 			 * on */
 			char cmd[] = "vCont;c:xxxxxxxx.xxxxxxxx";
 
-			debug_msg("current_tcp %d general_pid %d general_tid %d gdb_group_pid %d gdb_exit_group_pid %d gdb_w0_pid %d\n", current_tcp ? current_tcp->pid : 0, general_pid, general_tid, gdb_group_pid, gdb_exit_group_pid, gdb_w0_pid);
+			debug_msg("current_tcp %d general_pid %d general_tid %d gdb_group_pid %d gdb_exit_group_pid %d gdb_w0_pid %d\n",
+					current_tcp ? current_tcp->pid : 0, general_pid, general_tid, gdb_group_pid, gdb_exit_group_pid, gdb_w0_pid);
 			if (gdb_has_non_stop(gdb) && thread_count) {
-				snprintf(cmd, sizeof(cmd), "vCont;c:p%x.%x",
-					 general_pid, general_tid);
+				if (gdb_exit_pid == general_tid)
+					/* Selected thread exited so pick another */
+					snprintf(cmd, sizeof(cmd), "vCont;c:p%x.0",
+						 general_pid);
+				else
+					snprintf(cmd, sizeof(cmd), "vCont;c:p%x.%x",
+						 general_pid, general_tid);
 			} else if (current_tcp == NULL) {
  				if (gdb_has_non_stop(gdb))
  					snprintf(cmd, sizeof(cmd), "vCont;c:p%x.%x",
