@@ -501,6 +501,9 @@ gdb_init_syscalls(void)
 	bool want_syscall_set = false;
 	unsigned sci;
 
+	/* TODO Improve non-stop futex handling */
+	qualify ("trace=!futex");
+
 	/* Only send syscall list if a filtered list was given with -e */
 	for (sci = 0; sci < nsyscalls; sci++)
 		if (! (qual_flags(sci) & QUAL_TRACE)) {
@@ -1267,54 +1270,6 @@ gdb_upoke(struct tcb *tcp, unsigned long off, kernel_ulong_t res)
 {
 	kernel_ulong_t buffer = res;
 	return gdb_write_mem(tcp->pid, off, current_wordsize, (char*)&buffer);
-}
-
-
-int
-gdb_getfdpath(struct tcb *tcp, int fd, char *buf, unsigned bufsize)
-{
-	if (!gdb || fd < 0)
-		return -1;
-
-	/*
-	 * As long as we assume a Linux target, we can peek at their procfs
-	 * just like normal getfdpath does.  Maybe that won't always be true.
-	 */
-	char linkpath[sizeof("/proc/%u/fd/%u") + 2 * sizeof(int)*3];
-	sprintf(linkpath, "/proc/%u/fd/%u", tcp->pid, fd);
-	return gdb_readlink(gdb, linkpath, buf, bufsize);
-}
-
-
-bool
-gdb_verify_args(const char *username, bool daemon, unsigned int *follow_fork)
-{
-	if (username) {
-		/* TODO We can run local gdb stub under a different user */
-		error_msg_and_die("-u and -G are mutually exclusive");
-	}
-
-	if (daemon) {
-		error_msg_and_die("-D and -G are mutually exclusive");
-	}
-
-	if (!*follow_fork) {
-		/* TODO it more affects the behaviour on the discovery of the new
-		 *     process, so we can support no-follow-fork by detaching
-		 *     new childs as we already doing now with unexpected ones.
-		 */
-		error_msg("-G is always multithreaded, implies -f");
-		*follow_fork = 1;
-	}
-
-#ifdef USE_LIBUNWIND
-	if (stack_trace_enabled)
-		error_msg_and_die("Simultaneous usage of "
-				  "gdbserver backend (-G) and "
-				  "stack tracing (-k) is not supported");
-#endif
-
-	return true;
 }
 
 

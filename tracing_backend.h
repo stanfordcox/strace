@@ -50,11 +50,6 @@ struct tracing_backend {
 	/* Optional. Called at the final initialisation stage, after attach */
 	void (*post_init) (void);
 
-	/* XXX Merge these two in start_init */
-        bool (*prog_pid_check) (char *exec_name, int nprocs);
-	bool (*verify_args) (const char *username, bool daemon,
-			     unsigned int *follow_fork);
-
 	/* Tracee creation/reaping and attaching/detaching */
 
 	void (*startup_child) (char **argv);
