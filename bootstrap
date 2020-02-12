@@ -1,12 +1,13 @@
 #!/bin/sh -eu
 #
-# Copyright (c) 2014-2018 The strace developers.
+# Copyright (c) 2014-2020 The strace developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
 ./m4/gen_bpf_attr_m4.sh
 ./generate_mpers_am.sh
+./types/gen.sh
 ./xlat/gen.sh
 ./tests/gen_pure_executables.sh
 ./tests/gen_tests.sh

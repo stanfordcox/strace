@@ -4,7 +4,7 @@
 # Copyright (c) 2006-2016 Dmitry V. Levin <ldv@altlinux.org>
 # Copyright (c) 2008-2015 Mike Frysinger <vapier@gentoo.org>
 # Copyright (c) 2015 Elvira Khabirova <lineprinter0@gmail.com>
-# Copyright (c) 2002-2019 The strace developers.
+# Copyright (c) 2002-2020 The strace developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: LGPL-2.1-or-later
@@ -27,7 +27,7 @@ ARCH		= @arch@
 
 READELF		= @READELF@
 
-ACLOCAL_AMFLAGS = -I m4
+ACLOCAL_AMFLAGS = -I m4 -I types
 AM_CFLAGS = $(WARN_CFLAGS)
 OS_CPPFLAGS = -I$(builddir)/$(OS)/$(ARCH) \
 	      -I$(srcdir)/$(OS)/$(ARCH) \
@@ -48,6 +48,7 @@ AM_CPPFLAGS = $(OS_CPPFLAGS) $(GDBSERVER_CPPFLAGS)
 AM_CFLAGS_FOR_BUILD = $(WARN_CFLAGS_FOR_BUILD)
 AM_CPPFLAGS_FOR_BUILD = $(AM_CPPFLAGS)
 
+include types/Makemodule.am
 include xlat/Makemodule.am
 
 strace_CPPFLAGS = $(AM_CPPFLAGS)
@@ -382,6 +383,7 @@ strace_SOURCES =	\
 	xmalloc.c	\
 	xmalloc.h	\
 	xstring.h	\
+	$(TYPES_HEADER_FILES) \
 	$(strace_SOURCES_check) \
 	# end of strace_SOURCES
 
@@ -397,7 +399,7 @@ strace_SOURCES +=		\
 	# end of gdbserver strace_SOURCES
 endif
 
-strace_SOURCES_check = bpf_attr_check.c
+strace_SOURCES_check = bpf_attr_check.c $(TYPES_CHECK_FILES)
 
 if ENABLE_STACKTRACE
 strace_SOURCES += unwind.c unwind.h
@@ -785,6 +787,7 @@ EXTRA_DIST =				\
 	linux/s390/arch_defs_.h		\
 	linux/s390/arch_regs.c		\
 	linux/s390/arch_sigreturn.c	\
+	linux/s390/check_scno.c		\
 	linux/s390/get_error.c		\
 	linux/s390/get_scno.c		\
 	linux/s390/get_syscall_args.c	\
@@ -802,6 +805,7 @@ EXTRA_DIST =				\
 	linux/s390x/arch_get_personality.c \
 	linux/s390x/arch_regs.c		\
 	linux/s390x/arch_sigreturn.c	\
+	linux/s390x/check_scno.c	\
 	linux/s390x/get_error.c		\
 	linux/s390x/get_scno.c		\
 	linux/s390x/get_syscall_args.c	\
@@ -989,6 +993,8 @@ EXTRA_DIST =				\
 	strace-graph			\
 	strace-log-merge		\
 	strace.spec			\
+	types/find_last_type_fields.awk	\
+	types/gen.sh			\
 	$(XLAT_INPUT_FILES)		\
 	$(XLAT_HEADER_FILES)		\
 	xlat/gen.sh			\

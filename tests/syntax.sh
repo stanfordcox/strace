@@ -3,7 +3,7 @@
 # Define syntax testing primitives.
 #
 # Copyright (c) 2016 Dmitry V. Levin <ldv@altlinux.org>
-# Copyright (c) 2016-2019 The strace developers.
+# Copyright (c) 2016-2020 The strace developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
@@ -15,9 +15,8 @@ check_exit_status_and_stderr()
 	$STRACE "$@" 2> "$LOG" &&
 		dump_log_and_fail_with \
 			"strace $* failed to handle the error properly"
-	match_diff "$LOG" "$EXP" ||
-		dump_log_and_fail_with \
-			"strace $* failed to print expected diagnostics"
+	match_diff "$LOG" "$EXP" \
+		"strace $* failed to print expected diagnostics"
 }
 
 check_exit_status_and_stderr_using_grep()
@@ -25,9 +24,8 @@ check_exit_status_and_stderr_using_grep()
 	$STRACE "$@" 2> "$LOG" &&
 		dump_log_and_fail_with \
 			"strace $* failed to handle the error properly"
-	match_grep "$LOG" "$EXP" ||
-		dump_log_and_fail_with \
-			"strace $* failed to print expected diagnostics"
+	match_grep "$LOG" "$EXP" \
+		"strace $* failed to print expected diagnostics"
 }
 
 check_e()

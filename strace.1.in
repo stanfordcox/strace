@@ -237,7 +237,7 @@ A qualifying expression which modifies which events to trace
 or how to trace them.  The format of the expression is:
 .RS 15
 .IP
-[\,\fIqualifier\/\fB=\fR][\fB!\fR][\fB?\fR]\,\fIvalue1\/\fR[\fB,\fR[\fB?\fR]\,\fIvalue2\/\fR]...
+[\,\fIqualifier\/\fB=\fR][\fB!\fR]\,\fIvalue\/\fR[\fB,\fR\,\fIvalue\/\fR]...
 .RE
 .IP
 where
@@ -254,7 +254,7 @@ is one of
 .BR inject ,
 .BR status ,
 or
-.B kvm
+.BR kvm ,
 and
 .I value
 is a qualifier-dependent symbol or number.  The default
@@ -270,11 +270,6 @@ system call.  By contrast,
 .BR \-e "\ " trace "=!" open
 means to trace every system call except
 .BR open .
-Question mark before the syscall qualification allows suppression of error
-in case no syscalls matched the qualification provided.
-Appending one of "@64", "@32", or "@x32" suffixes to the syscall qualification
-allows specifying syscalls only for the 64-bit, 32-bit, or 32-on-64-bit
-personality, respectively.
 In addition, the special values
 .B all
 and
@@ -287,17 +282,23 @@ the exclamation point with a backslash.
 .SS Startup
 .TP 12
 \fB\-E\ \fIvar\fR=\,\fIval\fR
+.TQ
+.BR "\-\-env" = \fIvar\fR = \fIval\fR
 Run command with
 .IR var = val
 in its list of environment variables.
 .TP
 .BI "\-E " var
+.TQ
+.BR "\-\-env" = \fIvar\fR
 Remove
 .IR var
 from the inherited list of environment variables before passing it on to
 the command.
 .TP
 .BI "\-p " pid
+.TQ
+.BR "\-\-attach" = \fIpid\fR
 Attach to the process with the process
 .SM ID
 .I pid
@@ -319,6 +320,8 @@ option is given).
 "`pidof PROG`" syntax is supported.
 .TP
 .BI "\-u " username
+.TQ
+.BR "\-\-user" = \fIusername\fR
 Run command with the user \s-1ID\s0, group \s-2ID\s0, and
 supplementary groups of
 .IR username .
@@ -326,9 +329,23 @@ This option is only useful when running as root and enables the
 correct execution of setuid and/or setgid binaries.
 Unless this option is used setuid and setgid programs are executed
 without effective privileges.
+.TP
+.BI "\-G " \fIcomm\fR
+Enable the strace gdbserver backend.  For example if
+gdbserver has been started on "host" via
+
+               host> gdbserver --multi :2345
+
+Then strace can be invoked with the gdbserver backend which will
+communicate with the gdbserver running on "host" via the TCP port
+2345.
+
+	       target> strace -G host:2345 /usr/bin/ls
 .SS Tracing
 .TP 12
 .BI "\-b " syscall
+.TQ
+.BR "\-\-detach\-on" = \fIsyscall\fR
 If specified syscall is reached, detach from traced process.
 Currently, only
 .BR execve (2)
@@ -424,19 +441,27 @@ default if
 .RE
 .SS Filtering
 .TP 12
-\fB\-e\ trace\fR=\,\fIset\fR
-Trace only the specified set of system calls.  The
-.B \-c
-option is useful for determining which system calls might be useful
-to trace.  For example,
-.BR trace = open,close,read,write
-means to only
-trace those four system calls.  Be careful when making inferences
-about the user/kernel boundary if only a subset of system calls
-are being monitored.  The default is
-.BR trace = all .
+\fB\-e\ trace\fR=\,\fIsyscall_set\fR
+.TQ
+\fB\-\-trace\fR=\,\fIsyscall_set\fR
+Trace only the specified set of system calls.
+.I syscall_set
+is defined as
+[\fB!\fR]\,\fIvalue\fR[\fB,\fR\,\fIvalue\/\fR],
+and
+.I value
+can be one of the following:
+.RS
+.TP 13
+.I syscall
+Trace specific syscall, specified by its name (but see
+.BR NOTES ).
 .TP
-\fB\-e\ trace\fR=/\,\fIregex\fR
+.BI ? value
+Question mark before the syscall qualification allows suppression of error
+in case no syscalls matched the qualification provided.
+.TP
+.BI / regex
 Trace only those system calls that match the
 .IR regex .
 You can use
@@ -444,9 +469,24 @@ You can use
 Extended Regular Expression syntax (see
 .BR regex (7)).
 .TP
-.BR "\-e\ trace" = %file
+.IB syscall @64
+Trace
+.I syscall
+only for the 64-bit personality.
+.TP
+.IB syscall @32
+Trace
+.I syscall
+only for the 32-bit personality.
+.TP
+.IB syscall @x32
+Trace
+.I syscall
+only for the 32-on-64-bit personality.
+.TP
+.B %file
 .TQ
-.BR "\-e\ trace" = file
+.BR file
 Trace all system calls which take a file name as an argument.  You
 can think of this as an abbreviation for
 .BR "\-e\ trace" = open , stat , chmod , unlink ,...
@@ -459,89 +499,92 @@ The syntax without a preceding percent sign
 .RB (\[dq] "-e trace" = file \[dq])
 is deprecated.
 .TP
-.BR "\-e\ trace" = %process
+.B %process
 .TQ
-.BR "\-e\ trace" = process
+.B process
 Trace all system calls which involve process management.  This
 is useful for watching the fork, wait, and exec steps of a process.
 The syntax without a preceding percent sign
 .RB (\[dq] "-e trace" = process \[dq])
 is deprecated.
 .TP
-.BR "\-e\ trace" = %net
+.B %net
 .TQ
-.BR "\-e\ trace" = %network
+.B %network
 .TQ
-.BR "\-e\ trace" = network
+.B network
 Trace all the network related system calls.
 The syntax without a preceding percent sign
 .RB (\[dq] "-e trace" = network \[dq])
 is deprecated.
 .TP
-.BR "\-e\ trace" = %signal
+.BR %signal
 .TQ
-.BR "\-e\ trace" = signal
+.BR signal
 Trace all signal related system calls.
 The syntax without a preceding percent sign
 .RB (\[dq] "-e trace" = signal \[dq])
 is deprecated.
 .TP
-.BR "\-e\ trace" = %ipc
+.BR %ipc
 .TQ
-.BR "\-e\ trace" = ipc
+.BR ipc
 Trace all IPC related system calls.
 The syntax without a preceding percent sign
 .RB (\[dq] "-e trace" = ipc \[dq])
 is deprecated.
 .TP
-.BR "\-e\ trace" = %desc
+.BR %desc
 .TQ
-.BR "\-e\ trace" = desc
+.BR desc
 Trace all file descriptor related system calls.
 The syntax without a preceding percent sign
 .RB (\[dq] "-e trace" = desc \[dq])
 is deprecated.
 .TP
-.BR "\-e\ trace" = %memory
+.BR %memory
 .TQ
-.BR "\-e\ trace" = memory
+.BR memory
 Trace all memory mapping related system calls.
 The syntax without a preceding percent sign
 .RB (\[dq] "-e trace" = memory \[dq])
 is deprecated.
 .TP
-.BR "\-e\ trace" = %stat
+.BR %creds
+Trace system calls that read or modify user and group identifiers or capability sets.
+.TP
+.BR %stat
 Trace stat syscall variants.
 .TP
-.BR "\-e\ trace" = %lstat
+.BR %lstat
 Trace lstat syscall variants.
 .TP
-.BR "\-e\ trace" = %fstat
+.BR %fstat
 Trace fstat and fstatat syscall variants.
 .TP
-.BR "\-e\ trace" = %%stat
+.BR %%stat
 Trace syscalls used for requesting file status (stat, lstat, fstat, fstatat,
 statx, and their variants).
 .TP
-.BR "\-e\ trace" = %statfs
+.BR %statfs
 Trace statfs, statfs64, statvfs, osf_statfs, and osf_statfs64 system calls.
 The same effect can be achieved with
 .BR "\-e\ trace" = /^(.*_)?statv?fs
 regular expression.
 .TP
-.BR "\-e\ trace" = %fstatfs
+.BR %fstatfs
 Trace fstatfs, fstatfs64, fstatvfs, osf_fstatfs, and osf_fstatfs64 system calls.
 The same effect can be achieved with
 .BR "\-e\ trace" = /fstatv?fs
 regular expression.
 .TP
-.BR "\-e\ trace" = %%statfs
+.BR %%statfs
 Trace syscalls related to file system statistics (statfs-like, fstatfs-like,
 and ustat).  The same effect can be achieved with
 .BR "\-e\ trace" = /statv?fs|fsstat|ustat
 regular expression.
 .TP
-.BR "\-e\ trace" = %pure
+.BR %pure
 Trace syscalls that always succeed and have no arguments.
 Currently, this list includes
 .BR arc_gettls "(2), " getdtablesize "(2), " getegid "(2), " getegid32 "(2),"
@@ -553,8 +596,22 @@ Currently, this list includes
 .BR getxgid "(2), " getxpid "(2), " getxuid "(2), " kern_features "(2), and"
 .BR metag_get_tls "(2)"
 syscalls.
+.RE
+.IP
+The
+.B \-c
+option is useful for determining which system calls might be useful
+to trace.  For example,
+.BR trace = open,close,read,write
+means to only
+trace those four system calls.  Be careful when making inferences
+about the user/kernel boundary if only a subset of system calls
+are being monitored.  The default is
+.BR trace = all .
 .TP
 \fB\-e\ signal\fR=\,\fIset\fR
+.TQ
+\fB\-\-signal\fR=\,\fIset\fR
 Trace only the specified subset of signals.  The default is
 .BR signal = all .
 For example,
@@ -566,6 +623,8 @@ causes
 signals not to be traced.
 .TP
 \fB\-e\ status\fR=\,\fIset\fR
+.TQ
+\fB\-\-status\fR=\,\fIset\fR
 Print only system calls with the specified return status.  The default is
 .BR status = all .
 When using the
@@ -619,6 +678,8 @@ Trace system calls for which strace detached before the return.
 .RE
 .TP
 .BI "\-P " path
+.TQ
+.BR "\-\-trace\-path" = \fIpath\fR
 Trace only system calls accessing
 .IR path .
 Multiple
@@ -633,10 +694,19 @@ Print only syscalls that returned with an error code.
 .SS Output format
 .TP 12
 .BI "\-a " column
+.TQ
+.BR "\-\-columns" = \fIcolumn\fR
 Align return values in a specific column (default column 40).
 .TP
-\fB\-e\ abbrev\fR=\,\fIset\fR
+\fB\-e\ abbrev\fR=\,\fIsyscall_set\fR
+.TQ
+\fB\-\-abbrev\fR=\,\fIsyscall_set\fR
 Abbreviate the output from printing each member of large structures.
+The syntax of the
+.I syscall_set
+specification is the same as in the
+.B "-e trace"
+option.
 The default is
 .BR abbrev = all .
 The
@@ -644,13 +714,27 @@ The
 option has the effect of
 .BR abbrev = none .
 .TP
-\fB\-e\ verbose\fR=\,\fIset\fR
-Dereference structures for the specified set of system calls.  The
-default is
+\fB\-e\ verbose\fR=\,\fIsyscall_set\fR
+.TQ
+\fB\-\-verbose\fR=\,\fIsyscall_set\fR
+Dereference structures for the specified set of system calls.
+The syntax of the
+.I syscall_set
+specification is the same as in the
+.B "-e trace"
+option.
+The default is
 .BR verbose = all .
 .TP
-\fB\-e\ raw\fR=\,\fIset\fR
+\fB\-e\ raw\fR=\,\fIsyscall_set\fR
+.TQ
+\fB\-\-raw\fR=\,\fIsyscall_set\fR
 Print raw, undecoded arguments for the specified set of system calls.
+The syntax of the
+.I syscall_set
+specification is the same as in the
+.B "-e trace"
+option.
 This option has the effect of causing all arguments to be printed
 in hexadecimal.  This is mostly useful if you don't trust the
 decoding or you need to know the actual numeric value of an
@@ -660,6 +744,8 @@ See also
 option.
 .TP
 \fB\-e\ read\fR=\,\fIset\fR
+.TQ
+\fB\-\-read\fR=\,\fIset\fR
 Perform a full hexadecimal and ASCII dump of all the data read from
 file descriptors listed in the specified set.  For example, to see
 all input activity on file descriptors
@@ -674,6 +760,8 @@ system call which is controlled by the option
 .BR -e "\ " trace = read .
 .TP
 \fB\-e\ write\fR=\,\fIset\fR
+.TQ
+\fB\-\-write\fR=\,\fIset\fR
 Perform a full hexadecimal and ASCII dump of all the data written to
 file descriptors listed in the specified set.  For example, to see
 all output activity on file descriptors
@@ -688,17 +776,25 @@ system call which is controlled by the option
 .BR -e "\ " trace = write .
 .TP
 .BR "\-e\ kvm" = vcpu
+.TQ
+.BR "\-\-kvm" = vcpu
 Print the exit reason of kvm vcpu.  Requires Linux kernel version 4.16.0
 or higher.
 .TP
 .B \-i
+.TQ
+.B \-\-instruction\-pointer
 Print the instruction pointer at the time of the system call.
 .if '@ENABLE_STACKTRACE_FALSE@'#' .TP
 .if '@ENABLE_STACKTRACE_FALSE@'#' .B \-k
+.if '@ENABLE_STACKTRACE_FALSE@'#' .TQ
+.if '@ENABLE_STACKTRACE_FALSE@'#' .B \-\-stack\-traces
 .if '@ENABLE_STACKTRACE_FALSE@'#' Print the execution stack trace of the traced
 .if '@ENABLE_STACKTRACE_FALSE@'#' processes after each system call.
 .TP
 .BI "\-o " filename
+.TQ
+.BR "\-\-output" = \fIfilename\fR
 Write the trace output to the file
 .I filename
 rather than to stderr.
@@ -715,6 +811,8 @@ The latter is not compatible with
 option currently.
 .TP
 .B \-A
+.TQ
+.B \-\-output\-append\-mode
 Open the file provided in the
 .B \-o
 option in append mode.
@@ -740,6 +838,8 @@ reported by the
 option.
 .TP
 .BI "\-s " strsize
+.TQ
+.BR "\-\-string\-limit" = \fIstrsize\fR
 Specify the maximum string size to print (the default is 32).  Note
 that filenames are not considered strings and are always printed in
 full.
@@ -760,6 +860,8 @@ Show the time spent in system calls.  This records the time
 difference between the beginning and the end of each system call.
 .TP
 .B \-v
+.TQ
+.B \-\-no\-abbrev
 Print unabbreviated versions of environment, stat, termios, etc.
 calls.  These structures are very common in calls and so the default
 behavior displays a reasonable subset of structure members.  Use
@@ -772,6 +874,8 @@ Print all non-ASCII strings in hexadecimal string format.
 Print all strings in hexadecimal string format.
 .TP
 .BI "\-X " format
+.TQ
+.BR "\-\-const\-print\-style" = \fIformat\fR
 Set the format for printing of named constants and flags.
 Supported
 .I format
@@ -801,6 +905,8 @@ and block/character device number associated with device file descriptors.
 .SS Statistics
 .TP 12
 .B \-c
+.TQ
+.B \-\-summary\-only
 Count time, calls, and errors for each system call and report a summary on
 program exit, suppressing the regular output.
 This attempts to show system time (CPU time spent running
@@ -811,6 +917,8 @@ is used with
 only aggregate totals for all traced processes are kept.
 .TP
 .B \-C
+.TQ
+.B \-\-summary
 Like
 .B \-c
 but also print regular output while processes are running.
@@ -835,6 +943,8 @@ specification is described in section
 .IR "Time specification format description".
 .TP
 .BI "\-S " sortby
+.TQ
+.BR "\-\-summary\-sort\-by" = \fIsortby\fR
 Sort the output of the histogram printed by the
 .B \-c
 option by the specified criterion.  Legal values are
@@ -848,12 +958,21 @@ default is
 .BR time .
 .TP
 .B \-w
+.TQ
+.B \-\-summary\-wall\-clock
 Summarise the time difference between the beginning and end of
 each system call.  The default is to summarise the system time.
 .SS Tampering
 .TP 12
-\fB\-e\ inject\fR=\,\fIset\/\fR[:\fBerror\fR=\,\fIerrno\/\fR|:\fBretval\fR=\,\fIvalue\/\fR][:\fBsignal\fR=\,\fIsig\/\fR][:\fBsyscall\fR=\fIsyscall\fR][:\fBdelay_enter\fR=\,\fIdelay\/\fR][:\fBdelay_exit\fR=\,\fIdelay\/\fR][:\fBwhen\fR=\,\fIexpr\/\fR]
+\fB\-e\ inject\fR=\,\fIsyscall_set\/\fR[:\fBerror\fR=\,\fIerrno\/\fR|:\fBretval\fR=\,\fIvalue\/\fR][:\fBsignal\fR=\,\fIsig\/\fR][:\fBsyscall\fR=\fIsyscall\fR][:\fBdelay_enter\fR=\,\fIdelay\/\fR][:\fBdelay_exit\fR=\,\fIdelay\/\fR][:\fBwhen\fR=\,\fIexpr\/\fR]
+.TQ
+\fB\-\-inject\fR=\,\fIsyscall_set\/\fR[:\fBerror\fR=\,\fIerrno\/\fR|:\fBretval\fR=\,\fIvalue\/\fR][:\fBsignal\fR=\,\fIsig\/\fR][:\fBsyscall\fR=\fIsyscall\fR][:\fBdelay_enter\fR=\,\fIdelay\/\fR][:\fBdelay_exit\fR=\,\fIdelay\/\fR][:\fBwhen\fR=\,\fIexpr\/\fR]
 Perform syscall tampering for the specified set of syscalls.
+The syntax of the
+.I syscall_set
+specification is the same as in the
+.B "-e trace"
+option.
 .IP
 At least one of
 .BR error ,
@@ -981,7 +1100,9 @@ Specification of syscall injection can be combined
 with other syscall filtering options, for example,
 \fB\-P \fI/dev/urandom \fB\-e inject\fR=\,\fIfile\/\fR:\fBerror\fR=\,\fIENOENT\fR.
 .TP
-\fB\-e\ fault\fR=\,\fIset\/\fR[:\fBerror\fR=\,\fIerrno\/\fR][:\fBwhen\fR=\,\fIexpr\/\fR]
+\fB\-e\ fault\fR=\,\fIsyscall_set\/\fR[:\fBerror\fR=\,\fIerrno\/\fR][:\fBwhen\fR=\,\fIexpr\/\fR]
+.TQ
+\fB\-\-fault\fR=\,\fIsyscall_set\/\fR[:\fBerror\fR=\,\fIerrno\/\fR][:\fBwhen\fR=\,\fIexpr\/\fR]
 Perform syscall fault injection for the specified set of syscalls.
 .IP
 This is equivalent to more generic
@@ -992,6 +1113,8 @@ option set to
 .SS Miscellaneous
 .TP 12
 .B \-d
+.TQ
+.B \-\-debug
 Show some debugging output of
 .B strace
 itself on the standard error.
@@ -1007,7 +1130,7 @@ and it is ignored at all if used along with one or more instances of
 .B \-f
 option.
 .TP
-.BR \-h ,
+.B \-h
 .TQ
 .B \-\-help
 Print the help summary.
@@ -1033,7 +1156,7 @@ In cases when seccomp-bpf filter setup failed,
 .B strace
 proceeds as usual and stops traced processes on every system call.
 .TP
-.BR \-V ,
+.B \-V
 .TQ
 .B \-\-version
 Print the version number of
@@ -1112,7 +1235,7 @@ If you do use this feature, please remember to install
 a regular non-setuid version of
 .B strace
 for ordinary users to use.
-.SH "MULTIPLE PERSONALITY SUPPORT"
+.SH "MULTIPLE PERSONALITIES SUPPORT"
 On some architectures,
 .B strace
 supports decoding of syscalls for processes that use different ABI rather than
@@ -1348,8 +1471,10 @@ repository commit log.
 Problems with
 .B strace
 should be reported to the
+.UR mailto:strace\-devel@lists.strace.io
 .B strace
-mailing list at <strace\-devel@lists.strace.io>.
+mailing list
+.UE .
 .SH "SEE ALSO"
 .BR strace-log-merge (1),
 .BR ltrace (1),

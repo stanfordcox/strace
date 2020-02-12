@@ -1,7 +1,7 @@
 # Automake input for strace tests.
 #
 # Copyright (c) 2011-2016 Dmitry V. Levin <ldv@altlinux.org>
-# Copyright (c) 2011-2019 The strace developers.
+# Copyright (c) 2011-2020 The strace developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
@@ -174,6 +174,7 @@ check_PROGRAMS = $(PURE_EXECUTABLES) \
 	signal_receive \
 	sleep \
 	stack-fcall \
+	stack-fcall-attach \
 	stack-fcall-mangled \
 	status-none-threads \
 	status-unfinished-threads \
@@ -223,6 +224,9 @@ uio_CPPFLAGS = $(AM_CPPFLAGS) -D_FILE_OFFSET_BITS=64
 stack_fcall_SOURCES = stack-fcall.c \
 	stack-fcall-0.c stack-fcall-1.c stack-fcall-2.c stack-fcall-3.c
 
+stack_fcall_attach_SOURCES = stack-fcall-attach.c \
+	stack-fcall-0.c stack-fcall-1.c stack-fcall-2.c stack-fcall-3.c
+
 stack_fcall_mangled_SOURCES = stack-fcall-mangled.c \
 	stack-fcall-mangled-0.c stack-fcall-mangled-1.c \
 	stack-fcall-mangled-2.c stack-fcall-mangled-3.c
@@ -230,7 +234,7 @@ stack_fcall_mangled_SOURCES = stack-fcall-mangled.c \
 include gen_tests.am
 
 if ENABLE_STACKTRACE
-STACKTRACE_TESTS = strace-k.test
+STACKTRACE_TESTS = strace-k.test strace-k-p.test
 if USE_DEMANGLE
 STACKTRACE_TESTS += strace-k-demangle.test
 endif
@@ -474,12 +478,15 @@ EXTRA_DIST = \
 	strace-ff.expected \
 	strace-k-demangle.expected \
 	strace-k-demangle.test \
+	strace-k-p.expected \
+	strace-k-p.test \
 	strace-k.expected \
 	strace-k.test \
 	strace-r.expected \
 	strace.supp \
 	sun_path.expected \
 	syntax.sh \
+	trace_creds.in \
 	trace_fstat.in \
 	trace_fstatfs.in \
 	trace_lstat.in \

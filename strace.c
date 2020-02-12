@@ -3,7 +3,7 @@
  * Copyright (c) 1993 Branko Lankester <branko@hacktic.nl>
  * Copyright (c) 1993, 1994, 1995, 1996 Rick Sladkey <jrs@world.std.com>
  * Copyright (c) 1996-1999 Wichert Akkerman <wichert@cistron.nl>
- * Copyright (c) 1999-2019 The strace developers.
+ * Copyright (c) 1999-2020 The strace developers.
  * All rights reserved.
  *
  * SPDX-License-Identifier: LGPL-2.1-or-later
@@ -254,82 +254,135 @@ usage(void)
 #endif
 
 	printf("\
-usage: strace [-ACdffhi" K_OPT "qqrtttTvVwxxyyzZ] [-I n] [-b execve] [-e expr]...\n\
-              [-a column] [-o file] [-s strsize] [-X format] [-P path]...\n\
-              [-p pid]... [--seccomp-bpf]\n\
-              { -p pid | [-DDD] [-E var=val]... [-u username] PROG [ARGS] }\n\
-   or: strace -c[dfwzZ] [-I n] [-b execve] [-e expr]... [-O overhead]\n\
-              [-S sortby] [-P path]... [-p pid]... [--seccomp-bpf]\n\
-              { -p pid | [-DDD] [-E var=val]... [-u username] PROG [ARGS] }\n\
+Usage: strace [-ACdffhi" K_OPT "qqrtttTvVwxxyyzZ] [-I N] [-b execve] [-e EXPR]...\n\
+              [-a COLUMN] [-o FILE] [-s STRSIZE] [-X FORMAT] [-P PATH]...\n\
+              [-p PID]... [--seccomp-bpf]\n\
+              { -p PID | [-DDD] [-E VAR=VAL]... [-u USERNAME] PROG [ARGS] }\n\
+   or: strace -c[dfwzZ] [-I N] [-b execve] [-e EXPR]... [-O OVERHEAD]\n\
+              [-S SORTBY] [-P PATH]... [-p PID]... [--seccomp-bpf]\n\
+              { -p PID | [-DDD] [-E VAR=VAL]... [-u USERNAME] PROG [ARGS] }\n\
 \n\
-Output format:\n\
-  -A             open the file provided in the -o option in append mode\n\
-  -a column      alignment COLUMN for printing syscall results (default %d)\n\
-  -i             print instruction pointer at time of syscall\n\
-"
-#ifdef ENABLE_STACKTRACE
-"\
-  -k             obtain stack trace between each syscall\n\
-"
-#endif
-"\
-  -o file        send trace output to FILE instead of stderr\n\
-  -q             suppress messages about attaching, detaching, etc.\n\
-  -qq            suppress messages about process exit status as well.\n\
-  -r             print relative timestamp\n\
-  -s strsize     limit length of print strings to STRSIZE chars (default %d)\n\
-  -t             print absolute timestamp\n\
-  -tt            print absolute timestamp with usecs\n\
-  -T             print time spent in each syscall\n\
-  -v             verbose mode: print entities unabbreviated\n\
-  -x             print non-ascii strings in hex\n\
-  -xx            print all strings in hex\n\
-  -X format      set the format for printing of named constants and flags\n\
-  -y             print paths associated with file descriptor arguments\n\
-  -yy            print protocol specific information associated with socket\n\
-                 file descriptors\n\
-\n\
-Statistics:\n\
-  -c             count time, calls, and errors for each syscall and report\n\
-                 summary\n\
-  -C             like -c but also print regular output\n\
-  -O overhead    set overhead for tracing syscalls to OVERHEAD usecs\n\
-  -S sortby      sort syscall counts by: time, calls, errors, name, nothing\n\
-                 (default %s)\n\
-  -w             summarise syscall latency (default is system time)\n\
-\n\
-Filtering:\n\
-  -e expr        a qualifying expression: option=[!]all or option=[!]val1[,val2]...\n\
+General:\n\
+  -e EXPR        a qualifying expression: OPTION=[!]all or OPTION=[!]VAL1[,VAL2]...\n\
      options:    trace, abbrev, verbose, raw, signal, read, write, fault,\n\
                  inject, status, kvm\n\
-  -P path        trace accesses to path\n\
-  -z             print only syscalls that returned without an error code\n\
-  -Z             print only syscalls that returned with an error code\n\
+\n\
+Startup:\n\
+  -E VAR=VAL, --env=VAR=VAL\n\
+                 put VAR=VAL in the environment for command\n\
+  -E VAR, --env=VAR\n\
+                 remove VAR from the environment for command\n\
+  -p PID, --attach=PID\n\
+                 trace process with process id PID, may be repeated\n\
+  -u USERNAME, --user=USERNAME\n\
+                 run command as USERNAME handling setuid and/or setgid\n\
 \n\
 Tracing:\n\
-  -b execve      detach on execve syscall\n\
+  -b execve, --detach-on=execve\n\
+                 detach on execve syscall\n\
   -D             run tracer process as a grandchild, not as a parent\n\
   -DD            run tracer process in a separate process group\n\
   -DDD           run tracer process in a separate session\n\
   -f             follow forks\n\
   -ff            follow forks with output into separate files\n\
-  -I interruptible\n\
+  -I INTERRUPTIBLE\n\
      1:          no signals are blocked\n\
      2:          fatal signals are blocked while decoding syscall (default)\n\
      3:          fatal signals are always blocked (default if '-o FILE PROG')\n\
      4:          fatal signals and SIGTSTP (^Z) are always blocked\n\
                  (useful to make 'strace -o FILE PROG' not stop on ^Z)\n\
 \n\
-Startup:\n\
-  -E var         remove var from the environment for command\n\
-  -E var=val     put var=val in the environment for command\n\
-  -p pid         trace process with process id PID, may be repeated\n\
-  -u username    run command as username handling setuid and/or setgid\n\
+Filtering:\n\
+  -e trace=[!]{[?]SYSCALL[@64|@32|@x32]|[?]/REGEX|GROUP|all|none},\n\
+  --trace=[!]{[?]SYSCALL[@64|@32|@x32]|[?]/REGEX|GROUP|all|none}\n\
+                 trace only specified syscalls.\n\
+     groups:     %%creds, %%desc, %%file, %%fstat, %%fstatfs %%ipc, %%lstat,\n\
+                 %%memory, %%net, %%process, %%pure, %%signal, %%stat, %%%%stat,\n\
+                 %%statfs, %%%%statfs\n\
+  -e signal=SET, --signal=SET\n\
+                 trace only the specified set of signals\n\
+                 print only the signals from SET\n\
+  -e status=SET, --status=SET\n\
+                 print only system calls with the return statuses in SET\n\
+     statuses:   successful, failed, unfinished, unavailable, detached\n\
+  -P PATH, --trace-path=PATH\n\
+                 trace accesses to PATH\n\
+  -z             print only syscalls that returned without an error code\n\
+  -Z             print only syscalls that returned with an error code\n\
 \n\
+Output format:\n\
+  -a COLUMN, --columns=COLUMN\n\
+                 alignment COLUMN for printing syscall results (default %d)\n\
+  -e abbrev=SET, --abbrev=SET\n\
+                 abbreviate output for the syscalls in SET\n\
+  -e verbose=SET, --verbose=SET\n\
+                 dereference structures for the syscall in SET\n\
+  -e raw=SET, --raw=SET\n\
+                 print undecoded arguments for the syscalls in SET\n\
+  -e read=SET, --read=SET\n\
+                 dump the data read from the file descriptors in SET\n\
+  -e write=SET, --write=SET\n\
+                 dump the data written to the file descriptors in SET\n\
+  -e kvm=vcpu, --kvm=vcpu\n\
+                 print exit reason of kvm vcpu\n\
+  -i, --instruction-pointer\n\
+                 print instruction pointer at time of syscall\n\
+"
+#ifdef ENABLE_STACKTRACE
+"\
+  -k, --stack-traces\n\
+                 obtain stack trace between each syscall\n\
+"
+#endif
+"\
+  -o FILE, --output=FILE\n\
+                 send trace output to FILE instead of stderr\n\
+  -A, --output-append-mode\n\
+                 open the file provided in the -o option in append mode\n\
+  -q             suppress messages about attaching, detaching, etc.\n\
+  -qq            suppress messages about process exit status as well.\n\
+  -r             print relative timestamp\n\
+  -s STRSIZE, --string-limit=STRSIZE\n\
+                 limit length of print strings to STRSIZE chars (default %d)\n\
+  -t             print absolute timestamp\n\
+  -tt            print absolute timestamp with usecs\n\
+  -ttt           print absolute UNIX time with usecs\n\
+  -T             print time spent in each syscall\n\
+  -v, --no-abbrev\n\
+                 verbose mode: print entities unabbreviated\n\
+  -x             print non-ascii strings in hex\n\
+  -xx            print all strings in hex\n\
+  -X FORMAT      set the FORMAT for printing of named constants and flags\n\
+     formats:    raw, abbrev, verbose\n\
+  -y             print paths associated with file descriptor arguments\n\
+  -yy            print protocol specific information associated with socket\n\
+                 file descriptors\n\
+\n\
+Statistics:\n\
+  -c, --summary-only\n\
+                 count time, calls, and errors for each syscall and report\n\
+                 summary\n\
+  -C, --summary  like -c, but also print the regular output\n\
+  -O OVERHEAD    set overhead for tracing syscalls to OVERHEAD usecs\n\
+  -S SORTBY, --summary-sort-by=SORTBY\n\
+                 sort syscall counts by: time, calls, errors, name, nothing\n\
+                 (default %s)\n\
+  -w             summarise syscall latency (default is system time)\n\
+\n\
+Tampering:\n\
+  -e inject=SET[:error=ERRNO|:retval=VALUE][:signal=SIG][:syscall=SYSCALL]\n\
+            [:delay_enter=DELAY][:delay_exit=DELAY][:when=WHEN],\n\
+  --inject=SET[:error=ERRNO|:retval=VALUE][:signal=SIG][:syscall=SYSCALL]\n\
+           [:delay_enter=DELAY][:delay_exit=DELAY][:when=WHEN]\n\
+                 perform syscall tampering for the syscalls in SET\n\
+     delay:      milliseconds or NUMBER{s|ms|us|ns}\n\
+     when:       FIRST, FIRST+, or FIRST+STEP\n\
+  -e fault=SET[:error=ERRNO][:when=WHEN], --fault=SET[:error=ERRNO][:when=WHEN]\n\
+                 synonym for -e inject with default ERRNO set to ENOSYS.\n\
 Miscellaneous:\n\
-  --seccomp-bpf  enable seccomp-bpf filtering\n\
-  -d             enable debug output to stderr\n\
+  -d, --debug    enable debug output to stderr\n\
   -h, --help     print help message\n\
+  --seccomp-bpf  enable seccomp-bpf filtering\n\
   -V, --version  print version\n\
 "
 /* ancient, no one should use it
@@ -1743,11 +1796,6 @@ init(int argc, char *argv[])
 	 * the successful backend initialisation, iterate over it in order
 	 * to add them to global_path_set.
 	 */
-	const char **pathtrace_paths = NULL;
-	size_t pathtrace_size = 0;
-	size_t pathtrace_count = 0;
-	size_t cnt;
-
 	if (!program_invocation_name || !*program_invocation_name) {
 		static char name[] = "strace";
 		program_invocation_name =
@@ -1759,31 +1807,71 @@ init(int argc, char *argv[])
 	shared_log = stderr;
 	set_sortby(DEFAULT_SORTBY);
 	set_personality(DEFAULT_PERSONALITY);
-	qualify("trace=all");
-	qualify("abbrev=all");
-	qualify("verbose=all");
-	qualify("status=all");
+	qualify_trace("all");
+	qualify_abbrev("all");
+	qualify_verbose("all");
 #if DEFAULT_QUAL_FLAGS != (QUAL_TRACE | QUAL_ABBREV | QUAL_VERBOSE)
 # error Bug in DEFAULT_QUAL_FLAGS
 #endif
-	qualify("signal=all");
+	qualify_status("all");
+	qualify_signals("all");
 
 	static const char optstring[] = "+"
-#ifdef ENABLE_STACKTRACE
-	    "k"
-#endif
 #ifdef ENABLE_GDBSERVER
 	    "G:"
 #endif
-	    "a:Ab:cCdDe:E:fFhiI:o:O:p:P:qrs:S:tTu:vVwxX:yzZ";
+		"a:Ab:cCdDe:E:fFhiI:ko:O:p:P:qrs:S:tTu:vVwxX:yzZ";
 
 	enum {
-		SECCOMP_OPTION = 0x100
+		GETOPT_SECCOMP = 0x100,
+
+		GETOPT_QUAL_TRACE,
+		GETOPT_QUAL_ABBREV,
+		GETOPT_QUAL_VERBOSE,
+		GETOPT_QUAL_RAW,
+		GETOPT_QUAL_SIGNAL,
+		GETOPT_QUAL_STATUS,
+		GETOPT_QUAL_READ,
+		GETOPT_QUAL_WRITE,
+		GETOPT_QUAL_FAULT,
+		GETOPT_QUAL_INJECT,
+		GETOPT_QUAL_KVM,
 	};
 	static const struct option longopts[] = {
-		{ "seccomp-bpf", no_argument, 0, SECCOMP_OPTION },
-		{ "help", no_argument, 0, 'h' },
-		{ "version", no_argument, 0, 'V' },
+		{ "columns",		required_argument, 0, 'a' },
+		{ "output-append-mode",	no_argument,	   0, 'A' },
+		{ "detach-on",		required_argument, 0, 'b' },
+		{ "summary-only",	no_argument,	   0, 'c' },
+		{ "summary",		no_argument,	   0, 'C' },
+		{ "debug",		no_argument,	   0, 'd' },
+		{ "env",		required_argument, 0, 'E' },
+		{ "help",		no_argument,	   0, 'h' },
+		{ "instruction-pointer", no_argument,      0, 'i' },
+		{ "stack-traces",	no_argument,	   0, 'k' },
+		{ "output",		required_argument, 0, 'o' },
+		{ "attach",		required_argument, 0, 'p' },
+		{ "trace-path",		required_argument, 0, 'P' },
+		{ "string-limit",	required_argument, 0, 's' },
+		{ "summary-sort-by",	required_argument, 0, 'S' },
+		{ "user",		required_argument, 0, 'u' },
+		{ "no-abbrev",		no_argument,	   0, 'v' },
+		{ "version",		no_argument,	   0, 'V' },
+		{ "summary-wall-clock", no_argument,	   0, 'w' },
+		{ "const-print-style",	required_argument, 0, 'X' },
+		{ "seccomp-bpf",	no_argument,	   0, GETOPT_SECCOMP },
+
+		{ "trace",	required_argument, 0, GETOPT_QUAL_TRACE },
+		{ "abbrev",	required_argument, 0, GETOPT_QUAL_ABBREV },
+		{ "verbose",	required_argument, 0, GETOPT_QUAL_VERBOSE },
+		{ "raw",	required_argument, 0, GETOPT_QUAL_RAW },
+		{ "signals",	required_argument, 0, GETOPT_QUAL_SIGNAL },
+		{ "status",	required_argument, 0, GETOPT_QUAL_STATUS },
+		{ "read",	required_argument, 0, GETOPT_QUAL_READ },
+		{ "write",	required_argument, 0, GETOPT_QUAL_WRITE },
+		{ "fault",	required_argument, 0, GETOPT_QUAL_FAULT },
+		{ "inject",	required_argument, 0, GETOPT_QUAL_INJECT },
+		{ "kvm",	required_argument, 0, GETOPT_QUAL_KVM },
+
 		{ 0, 0, 0, 0 }
 	};
 
@@ -1851,11 +1939,15 @@ init(int argc, char *argv[])
 			if (opt_intr <= 0)
 				error_opt_arg(c, optarg);
 			break;
-#ifdef ENABLE_STACKTRACE
 		case 'k':
+#ifdef ENABLE_STACKTRACE
 			stack_trace_enabled = true;
-			break;
+#else
+			error_msg_and_die("Stack traces (-k/--stack-traces "
+					  "option) are not supported by this "
+					  "build of strace");
 #endif
+			break;
 		case 'o':
 			outfname = optarg;
 			break;
@@ -1867,12 +1959,7 @@ init(int argc, char *argv[])
 			process_opt_p_list(optarg);
 			break;
 		case 'P':
-			if (pathtrace_count >= pathtrace_size)
-				pathtrace_paths = xgrowarray(pathtrace_paths,
-					&pathtrace_size,
-					sizeof(pathtrace_paths[0]));
-
-			pathtrace_paths[pathtrace_count++] = optarg;
+			pathtrace_select(current_tcp, optarg);
 			break;
 		case 'q':
 			qflag++;
@@ -1899,7 +1986,7 @@ init(int argc, char *argv[])
 			username = optarg;
 			break;
 		case 'v':
-			qualify("abbrev=none");
+			qualify_abbrev("none");
 			break;
 		case 'V':
 			print_version();
@@ -1934,8 +2021,41 @@ init(int argc, char *argv[])
 			add_number_to_set(STATUS_FAILED, status_set);
 			zflags++;
 			break;
-		case SECCOMP_OPTION:
+		case GETOPT_SECCOMP:
 			seccomp_filtering = true;
+			break;
+		case GETOPT_QUAL_TRACE:
+			qualify_trace(optarg);
+			break;
+		case GETOPT_QUAL_ABBREV:
+			qualify_abbrev(optarg);
+			break;
+		case GETOPT_QUAL_VERBOSE:
+			qualify_verbose(optarg);
+			break;
+		case GETOPT_QUAL_RAW:
+			qualify_raw(optarg);
+			break;
+		case GETOPT_QUAL_SIGNAL:
+			qualify_signals(optarg);
+			break;
+		case GETOPT_QUAL_STATUS:
+			qualify_status(optarg);
+			break;
+		case GETOPT_QUAL_READ:
+			qualify_read(optarg);
+			break;
+		case GETOPT_QUAL_WRITE:
+			qualify_write(optarg);
+			break;
+		case GETOPT_QUAL_FAULT:
+			qualify_fault(optarg);
+			break;
+		case GETOPT_QUAL_INJECT:
+			qualify_inject(optarg);
+			break;
+		case GETOPT_QUAL_KVM:
+			qualify_kvm(optarg);
 			break;
 		default:
 			if (!tracing_backend_handle_arg(c, optarg))
@@ -2024,10 +2144,6 @@ init(int argc, char *argv[])
 	if (!argc && daemonized_tracer) {
 		error_msg_and_help("PROG [ARGS] must be specified with -D");
 	}
-
-	for (cnt = 0; cnt < pathtrace_count; cnt++)
-		pathtrace_select(current_tcp, pathtrace_paths[cnt]);
-	free(pathtrace_paths);
 
 #ifndef HAVE_OPEN_MEMSTREAM
 	if (!is_complete_set(status_set, NUMBER_OF_STATUSES))
@@ -2923,11 +3039,17 @@ ptrace_restart_process(struct tcb *current_tcp, unsigned int restart_sig,
 	return true;
 }
 
+static void
+set_tcb_restart_op(void *data, unsigned int restart_op)
+{
+	struct tcb_wait_data *wd = data;
+	wd->restart_op = restart_op;
+}
+
 /* Returns true iff the main trace loop has to continue. */
 static bool
 dispatch_event(const struct tcb_wait_data *wd)
 {
-	unsigned int restart_op;
 	unsigned int restart_sig = 0;
 	enum trace_event te = wd ? wd->te : TE_BREAK;
 	/*
@@ -2937,9 +3059,7 @@ dispatch_event(const struct tcb_wait_data *wd)
 	int status = wd ? wd->status : 0;
 
 	if (current_tcp && has_seccomp_filter(current_tcp))
-		restart_op = seccomp_filter_restart_operator(current_tcp);
-	else
-		restart_op = PTRACE_SYSCALL;
+		set_tcb_restart_op((void*)wd, seccomp_filter_restart_operator(current_tcp));
 
 	switch (te) {
 	case TE_BREAK:
@@ -2962,12 +3082,10 @@ dispatch_event(const struct tcb_wait_data *wd)
 			 * processing it a second time.
 			 */
 			current_tcp->flags |= TCB_SECCOMP_FILTER;
-			restart_op = PTRACE_SYSCALL;
 			break;
 		}
 
 		if (seccomp_before_sysentry) {
-			restart_op = PTRACE_SYSCALL;
 			break;
 		}
 		ATTRIBUTE_FALLTHROUGH;
@@ -3021,7 +3139,7 @@ dispatch_event(const struct tcb_wait_data *wd)
 			 * a syscall-entry-stop because the flag was inverted
 			 * in the above call to trace_syscall.
 			 */
-			restart_op = exiting(current_tcp) ? PTRACE_SYSCALL : PTRACE_CONT;
+			set_tcb_restart_op((void*)wd, exiting(current_tcp) ? PTRACE_SYSCALL : PTRACE_CONT);
 		}
 		break;
 

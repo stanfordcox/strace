@@ -502,7 +502,7 @@ gdb_init_syscalls(void)
 	unsigned sci;
 
 	/* TODO Improve non-stop futex handling */
-	qualify ("trace=!futex");
+//	qualify ("trace=!futex");
 
 	/* Only send syscall list if a filtered list was given with -e */
 	for (sci = 0; sci < nsyscalls; sci++)
@@ -905,6 +905,7 @@ gdb_next_event(void)
 			gdb_w0_pid = gdb_decode_hex_str(process +
 						       sizeof(process_needle) - 1);
 			if (gdb_w0_pid == gdb_group_pid) {
+				wd->status = W_EXITCODE (gdb_signal_to_target(current_tcp, gdb_sig), 0);
 				wd->te = TE_EXITED;
 				GDB_NEXT_EVENT_RETURN (wd);
 			}

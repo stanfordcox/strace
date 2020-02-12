@@ -2,7 +2,7 @@
 #
 # Update copyright notices for source files.
 #
-# Copyright (c) 2017-2019 The strace developers.
+# Copyright (c) 2017-2020 The strace developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: LGPL-2.1-or-later
@@ -99,7 +99,7 @@ process_file()
 
 	if [ -z "$copyright_year_raw" ]; then
 		debug "Copyright notices haven't been found, skipping: $f"
-		continue
+		return
 	fi
 
 	last_commit_year=$(date -u +%Y -d "@$(git log --format=format:%at -- "$f" |
@@ -116,12 +116,13 @@ process_file()
 	# assume copyright notice is still relevant
 	if [ "$last_commit_year" = "$copyright_year" ]; then
 		debug "Does not need update, skipping: $f"
-		continue
+		return
 	else
 		debug "Needs update ('$copyright_year' != '$last_commit_year'): $f"
 	fi
 
 	# avoid gaps not covered by copyright
+	[ -n "$copyright_year" ] &&
 	[ "$first_commit_year" -lt "$copyright_year" ] || {
 		start_note='from last copyright year'
 		first_commit_year="$copyright_year"

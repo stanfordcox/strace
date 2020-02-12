@@ -286,7 +286,7 @@ static struct bpf_attr_check BPF_MAP_CREATE_checks[] = {
 			.key_size = 0xface1e55,
 			.value_size = 0xbadc0ded,
 			.max_entries = 0xbeefcafe,
-			.map_flags = 0xfffffc00,
+			.map_flags = 0xfffff800,
 			.inner_map_fd = 2718281828,
 			.numa_node = -1,
 			.map_name = "",
@@ -296,7 +296,7 @@ static struct bpf_attr_check BPF_MAP_CREATE_checks[] = {
 		.str = "map_type=0x1a /* BPF_MAP_TYPE_??? */"
 		       ", key_size=4207812181, value_size=3134983661"
 		       ", max_entries=3203386110"
-		       ", map_flags=0xfffffc00 /* BPF_F_??? */"
+		       ", map_flags=0xfffff800 /* BPF_F_??? */"
 		       ", inner_map_fd=-1576685468"
 		       ", map_name=\"\", map_ifindex=3141592653",
 
@@ -317,7 +317,8 @@ static struct bpf_attr_check BPF_MAP_CREATE_checks[] = {
 		       ", max_entries=3203386110"
 		       ", map_flags=BPF_F_NO_PREALLOC|BPF_F_NUMA_NODE"
 				   "|BPF_F_RDONLY|BPF_F_STACK_BUILD_ID"
-				   "|BPF_F_RDONLY_PROG|BPF_F_CLONE|0xc0dedc00",
+				   "|BPF_F_RDONLY_PROG|BPF_F_CLONE"
+				   "|BPF_F_MMAPABLE|0xc0ded800",
 	},
 	{ /* 4 */
 		.data = { .BPF_MAP_CREATE_data = {
@@ -335,7 +336,8 @@ static struct bpf_attr_check BPF_MAP_CREATE_checks[] = {
 		       ", max_entries=3203386110"
 		       ", map_flags=BPF_F_NO_PREALLOC|BPF_F_NUMA_NODE"
 				   "|BPF_F_RDONLY|BPF_F_STACK_BUILD_ID"
-				   "|BPF_F_RDONLY_PROG|BPF_F_CLONE|0xc0dedc00"
+				   "|BPF_F_RDONLY_PROG|BPF_F_CLONE"
+				   "|BPF_F_MMAPABLE|0xc0ded800"
 		       ", inner_map_fd=-1576685468",
 	},
 	{ /* 5 */
@@ -354,7 +356,8 @@ static struct bpf_attr_check BPF_MAP_CREATE_checks[] = {
 		       ", max_entries=3203386110"
 		       ", map_flags=BPF_F_NO_PREALLOC|BPF_F_NUMA_NODE"
 				   "|BPF_F_RDONLY|BPF_F_STACK_BUILD_ID"
-				   "|BPF_F_RDONLY_PROG|BPF_F_CLONE|0xc0dedc00"
+				   "|BPF_F_RDONLY_PROG|BPF_F_CLONE"
+				   "|BPF_F_MMAPABLE|0xc0ded800"
 		       ", inner_map_fd=-1576685468"
 		       ", numa_node=4294967295 /* NUMA_NO_NODE */",
 	},
@@ -375,7 +378,8 @@ static struct bpf_attr_check BPF_MAP_CREATE_checks[] = {
 		       ", max_entries=3203386110"
 		       ", map_flags=BPF_F_NO_PREALLOC|BPF_F_NUMA_NODE"
 				   "|BPF_F_RDONLY|BPF_F_STACK_BUILD_ID"
-				   "|BPF_F_RDONLY_PROG|BPF_F_CLONE|0xc0dedc00"
+				   "|BPF_F_RDONLY_PROG|BPF_F_CLONE"
+				   "|BPF_F_MMAPABLE|0xc0ded800"
 		       ", inner_map_fd=-1576685468"
 		       ", numa_node=4294967295 /* NUMA_NO_NODE */"
 		       ", map_name=\"fedcba987654321\"...",
@@ -397,7 +401,8 @@ static struct bpf_attr_check BPF_MAP_CREATE_checks[] = {
 		       ", max_entries=3203386110"
 		       ", map_flags=BPF_F_NO_PREALLOC|BPF_F_NUMA_NODE"
 				   "|BPF_F_RDONLY|BPF_F_STACK_BUILD_ID"
-				   "|BPF_F_RDONLY_PROG|BPF_F_CLONE|0xc0dedc00"
+				   "|BPF_F_RDONLY_PROG|BPF_F_CLONE"
+				   "|BPF_F_MMAPABLE|0xc0ded800"
 		       ", inner_map_fd=-1576685468"
 		       ", numa_node=4294967295 /* NUMA_NO_NODE */"
 		       ", map_name=\"0123456789abcde\""
@@ -601,7 +606,7 @@ print_BPF_PROG_LOAD_attr4(const struct bpf_attr_check *check, unsigned long addr
 	       license, IFINDEX_LO_STR);
 }
 
-static_assert(ARRAY_SIZE(bpf_prog_types_xdata) == 26,
+static_assert(ARRAY_SIZE(bpf_prog_types_xdata) == 27,
 	      "The prog_type for test 5 below needs to be updated");
 static struct bpf_attr_check BPF_PROG_LOAD_checks[] = {
 	{
@@ -612,7 +617,7 @@ static struct bpf_attr_check BPF_PROG_LOAD_checks[] = {
 	},
 	{ /* 1 */
 		.data = { .BPF_PROG_LOAD_data = {
-			.prog_type = 26,
+			.prog_type = 27,
 			.insn_cnt = 0xbadc0ded,
 			.insns = 0,
 			.license = 0,
@@ -623,7 +628,7 @@ static struct bpf_attr_check BPF_PROG_LOAD_checks[] = {
 			.prog_flags = 0,
 		} },
 		.size = offsetofend(struct BPF_PROG_LOAD_struct, prog_flags),
-		.str = "prog_type=0x1a /* BPF_PROG_TYPE_??? */"
+		.str = "prog_type=0x1b /* BPF_PROG_TYPE_??? */"
 		       ", insn_cnt=3134983661, insns=NULL, license=NULL"
 		       ", log_level=42, log_size=3141592653, log_buf=NULL"
 		       ", kern_version=KERNEL_VERSION(51966, 240, 13)"
@@ -686,7 +691,7 @@ static struct bpf_attr_check BPF_PROG_LOAD_checks[] = {
 	},
 	{ /* 5 */
 		.data = { .BPF_PROG_LOAD_data = {
-			.prog_type = 25,
+			.prog_type = 26,
 			.insn_cnt = 0xbadc0ded,
 			.insns = 0xffffffff00000000,
 			.license = 0xffffffff00000000,
@@ -698,7 +703,7 @@ static struct bpf_attr_check BPF_PROG_LOAD_checks[] = {
 			.prog_name = "fedcba987654321",
 		} },
 		.size = offsetofend(struct BPF_PROG_LOAD_struct, prog_name),
-		.str = "prog_type=BPF_PROG_TYPE_CGROUP_SOCKOPT"
+		.str = "prog_type=BPF_PROG_TYPE_TRACING"
 		       ", insn_cnt=3134983661"
 		       ", insns=" BIG_ADDR("0xffffffff00000000", "NULL")
 		       ", license=" BIG_ADDR("0xffffffff00000000", "NULL")
@@ -718,10 +723,12 @@ static struct bpf_attr_check BPF_PROG_LOAD_checks[] = {
 			.func_info_cnt = 0xdad3bef4,
 			.line_info_rec_size = 0xdad5bef6,
 			.line_info = 0xfac5fed5fac7fed8,
-			.line_info_cnt = 0xdad7bef8
+			.line_info_cnt = 0xdad7bef8,
+			.attach_btf_id = 0xdad7befa,
+			.attach_prog_fd = 0xbadc0def,
 		} },
 		.size = offsetofend(struct BPF_PROG_LOAD_struct,
-				    line_info_cnt),
+				    attach_prog_fd),
 		.str = "prog_type=BPF_PROG_TYPE_UNSPEC"
 		       ", insn_cnt=0"
 		       ", insns=NULL"
@@ -741,6 +748,8 @@ static struct bpf_attr_check BPF_PROG_LOAD_checks[] = {
 		       ", line_info_rec_size=3671441142"
 		       ", line_info=0xfac5fed5fac7fed8"
 		       ", line_info_cnt=3671572216"
+		       ", attach_btf_id=3671572218"
+		       ", attach_prog_fd=-1159983633"
 	},
 };
 
@@ -1083,7 +1092,7 @@ static struct bpf_attr_check BPF_PROG_QUERY_checks[] = {
 	{ /* 2 */
 		.data = { .BPF_PROG_QUERY_data = {
 			.target_fd = 3141592653U,
-			.attach_type = 23,
+			.attach_type = 26,
 			.query_flags = 0xfffffffe,
 			.attach_flags = 0xfffffffc,
 			.prog_ids = 0xffffffffffffffffULL,
@@ -1091,7 +1100,7 @@ static struct bpf_attr_check BPF_PROG_QUERY_checks[] = {
 		} },
 		.size = offsetofend(struct BPF_PROG_QUERY_struct, prog_cnt),
 		.str = "query={target_fd=-1153374643"
-		       ", attach_type=0x17 /* BPF_??? */"
+		       ", attach_type=0x1a /* BPF_??? */"
 		       ", query_flags=0xfffffffe /* BPF_F_QUERY_??? */"
 		       ", attach_flags=0xfffffffc /* BPF_F_??? */"
 		       ", prog_ids="

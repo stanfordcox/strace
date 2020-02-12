@@ -2,7 +2,7 @@
  * Copyright (c) 1991, 1992, 2018 Paul Kranenburg <pk@cs.few.eur.nl>
  * Copyright (c) 1993 Branko Lankester <branko@hacktic.nl>
  * Copyright (c) 1993, 1994, 1995, 1996 Rick Sladkey <jrs@world.std.com>
- * Copyright (c) 2001-2019 The strace developers.
+ * Copyright (c) 1999-2020 The strace developers.
  * All rights reserved.
  *
  * SPDX-License-Identifier: LGPL-2.1-or-later
@@ -516,7 +516,6 @@ extern void call_summary(FILE *);
 extern void count_syscall(struct tcb *, const struct timespec *);
 extern void call_summary(FILE *);
 
-// extern void clear_regs(struct tcb *tcp);
 extern int get_scno(struct tcb *);
 extern kernel_ulong_t get_rt_sigframe_addr(struct tcb *);
 
@@ -579,8 +578,6 @@ static inline int set_tcb_priv_ulong(struct tcb *tcp, unsigned long val)
 /**
  * @return 0 on success, -1 on error.
  */
-// extern int
-// umoven(struct tcb *, kernel_ulong_t addr, unsigned int len, void *laddr);
 # define umove(pid, addr, objp)	\
 	umoven((pid), (addr), sizeof(*(objp)), (void *) (objp))
 
@@ -641,24 +638,6 @@ umoven_or_printaddr64_ignore_syserror(struct tcb *, uint64_t addr,
 	umoven_or_printaddr64_ignore_syserror((pid), (addr), sizeof(*(objp)), \
 					      (void *) (objp))
 
-#if 0
-extern bool
-print_array(struct tcb *,
-	    kernel_ulong_t start_addr,
-	    size_t nmemb,
-	    void *elem_buf,
-	    size_t elem_size,
-	    int (*umoven_func)(struct tcb *,
-				     kernel_ulong_t,
-				     unsigned int,
-				     void *),
-	    bool (*print_func)(struct tcb *,
-				     void *elem_buf,
-				     size_t elem_size,
-				     void *opaque_data),
-	    void *opaque_data);
-#endif
-
 static inline int
 umoven_or_printaddr_ignore_syserror(struct tcb *tcp, const kernel_ulong_t addr,
 				    unsigned int len, void *laddr)
@@ -672,16 +651,10 @@ umoven_or_printaddr_ignore_syserror(struct tcb *tcp, const kernel_ulong_t addr,
 /**
  * @return strlen + 1 on success, 0 on success and no NUL seen, -1 on error.
  */
-// extern int
-// umovestr(struct tcb *, kernel_ulong_t addr, unsigned int len, char *laddr);
 
 /* Invalidate the cache used by umove* functions.  */
 extern void invalidate_umove_cache(void);
 
-/*
-extern int upeek(struct tcb *tcp, unsigned long, kernel_ulong_t *);
-extern int upoke(struct tcb *tcp, unsigned long, kernel_ulong_t);
-*/
 
 # if HAVE_ARCH_GETRVAL2
 extern long getrval2(struct tcb *);
@@ -951,19 +924,26 @@ print_array(struct tcb *const tcp,
 
 /** Shorthand for printing local arrays. */
 static inline bool
-print_local_array(struct tcb *tcp,
-		  void *start_addr,
-		  const size_t nmemb,
-		  void *const elem_buf,
-		  const size_t elem_size,
-		  print_fn print_func,
-		  void *const opaque_data,
-		  unsigned int flags)
+print_local_array_ex(struct tcb *tcp,
+		     void *start_addr,
+		     const size_t nmemb,
+		     const size_t elem_size,
+		     print_fn print_func,
+		     void *const opaque_data,
+		     unsigned int flags,
+		     const struct xlat *index_xlat,
+		     const char *index_dflt)
 {
-	return print_array_ex(tcp, (uintptr_t) start_addr , nmemb,
-			      elem_buf, elem_size, NULL, print_func,
-			      opaque_data, flags, NULL, NULL);
+	return print_array_ex(tcp, (uintptr_t) start_addr, nmemb,
+			      NULL, elem_size, NULL, print_func,
+			      opaque_data, flags, index_xlat, index_dflt);
 }
+
+/** Shorthand for a shorthand for printing local arrays. */
+#define print_local_array(tcp_, start_addr_, print_func_)      \
+	print_local_array_ex((tcp_), (start_addr_), ARRAY_SIZE(start_addr_), \
+			     sizeof((start_addr_)[0]), (print_func_),        \
+			     NULL, 0, NULL, NULL)
 
 extern kernel_ulong_t *
 fetch_indirect_syscall_args(struct tcb *, kernel_ulong_t addr, unsigned int n_args);
@@ -1062,11 +1042,20 @@ print_perf_event_attr(struct tcb *const tcp, const kernel_ulong_t addr);
 extern const char *get_ifname(const unsigned int ifindex);
 extern void print_ifindex(unsigned int);
 
-extern unsigned int next_set_qual_scno(const unsigned int scno,
-				       unsigned qual_flg);
 extern void print_bpf_filter_code(const uint16_t code, bool extended);
 
 extern void qualify(const char *);
+extern void qualify_trace(const char *);
+extern void qualify_abbrev(const char *);
+extern void qualify_verbose(const char *);
+extern void qualify_raw(const char *);
+extern void qualify_signals(const char *);
+extern void qualify_status(const char *);
+extern void qualify_read(const char *);
+extern void qualify_write(const char *);
+extern void qualify_fault(const char *);
+extern void qualify_inject(const char *);
+extern void qualify_kvm(const char *);
 extern unsigned int qual_flags(const unsigned int);
 
 # define DECL_IOCTL(name)						\

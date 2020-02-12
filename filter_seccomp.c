@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2018 Chen Jingpiao <chenjingpiao@gmail.com>
  * Copyright (c) 2019 Paul Chaignon <paul.chaignon@gmail.com>
- * Copyright (c) 2019 The strace developers.
+ * Copyright (c) 2018-2020 The strace developers.
  * All rights reserved.
  *
  * SPDX-License-Identifier: LGPL-2.1-or-later
@@ -68,8 +68,6 @@ static const struct audit_arch_t audit_arch_vec[SUPPORTED_PERSONALITIES] = {
 # endif
 };
 
-# ifdef HAVE_FORK
-
 typedef unsigned short (*filter_generator_t)(struct sock_filter *,
 					     bool *overflow);
 static unsigned short linear_filter_generator(struct sock_filter *,
@@ -91,6 +89,8 @@ static struct sock_fprog bpf_prog = {
 	.len = USHRT_MAX,
 	.filter = NULL,
 };
+
+# ifdef HAVE_FORK
 
 static void ATTRIBUTE_NORETURN
 check_seccomp_order_do_child(void)
@@ -284,11 +284,11 @@ check_seccomp_order(void)
 static bool
 traced_by_seccomp(unsigned int scno, unsigned int p)
 {
-	if (is_number_in_set_array(scno, trace_set, p)
-	    || sysent_vec[p][scno].sys_flags
-	    & (TRACE_INDIRECT_SUBCALL | TRACE_SECCOMP_DEFAULT))
-		return true;
-	return false;
+	unsigned int always_trace_flags =
+		TRACE_INDIRECT_SUBCALL | TRACE_SECCOMP_DEFAULT |
+		(stack_trace_enabled ? MEMORY_MAPPING_CHANGE : 0);
+	return sysent_vec[p][scno].sys_flags & always_trace_flags ||
+		is_number_in_set_array(scno, trace_set, p);
 }
 
 static void

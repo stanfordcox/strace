@@ -2,7 +2,7 @@
 #
 # Copyright (c) 2015-2017 Dmitry V. Levin <ldv@altlinux.org>
 # Copyright (c) 2015 Elvira Khabirova <lineprinter0@gmail.com>
-# Copyright (c) 2015-2018 The strace developers.
+# Copyright (c) 2015-2020 The strace developers.
 # All rights reserved.
 #
 # SPDX-License-Identifier: LGPL-2.1-or-later
@@ -147,6 +147,14 @@ case "$arch" in
 						[#include "$srcdir/kernel_types.h"])
 				st_MPERS_SAVE_AC_CV([sizeof_kernel_long_t])
 				popdef([SIZEOF_KERNEL_LONG_T])
+
+				pushdef([SIZEOF_STRUCT_MSQID64_DS],
+					MPERS_NAME[_SIZEOF_STRUCT_MSQID64_DS])
+				st_MPERS_LOAD_AC_CV([sizeof_struct_msqid64_ds])
+				AC_CHECK_SIZEOF([struct msqid64_ds],,
+						[#include <linux/msg.h>])
+				st_MPERS_SAVE_AC_CV([sizeof_struct_msqid64_ds])
+				popdef([SIZEOF_STRUCT_MSQID64_DS])
 			fi
 		fi
 	fi
