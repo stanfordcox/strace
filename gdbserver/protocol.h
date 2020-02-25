@@ -63,6 +63,8 @@ void gdb_set_non_stop(struct gdb_conn *conn, bool val);
 
 bool gdb_has_non_stop(struct gdb_conn *conn);
 
+bool gdb_has_all_stop(struct gdb_conn *conn);
+
 char* pop_notification(size_t *size);
 
 void push_notification(char *packet, size_t packet_size);

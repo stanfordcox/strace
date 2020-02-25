@@ -210,7 +210,6 @@ gdb_begin_command(const char *command)
 {
 	int fds[2];
 	pid_t pid;
-	posix_spawn_file_actions_t file_actions;
 	const char* sh = "/bin/sh";
 	const char *const const_argv[] = {"sh", "-c", command, NULL};
 	char *const *argv = (char *const *) const_argv;
@@ -219,34 +218,27 @@ gdb_begin_command(const char *command)
 	if (socketpair(AF_UNIX, SOCK_STREAM, 0, fds) < 0)
 		perror_msg_and_die("socketpair");
 
-	ZERO_OR_DIE(posix_spawn_file_actions_init, &file_actions);
-
-	/* Close our end in the child. */
-	ZERO_OR_DIE(posix_spawn_file_actions_addclose, &file_actions, fds[0]);
-
-	/* Copy the child's end to its stdout and stdin. */
-	if (fds[1] != STDOUT_FILENO) {
-		ZERO_OR_DIE(posix_spawn_file_actions_adddup2, &file_actions,
-			    fds[1], STDOUT_FILENO);
-		ZERO_OR_DIE(posix_spawn_file_actions_addclose, &file_actions,
-			    fds[1]);
+	pid = fork ();
+	if (pid < 0)
+		perror_msg_and_die("fork failed");
+	else if (pid == 0) {
+		/* Close our end in the child. */
+		close(fds[0]);
+		/* Copy the child's end to its stdout and stdin. */
+		if (fds[1] != STDOUT_FILENO) {
+			dup2(fds[1], STDOUT_FILENO);
+			close(fds[1]);
+		}
+		dup2(STDOUT_FILENO, STDIN_FILENO);
+		execve(sh, argv, environ);
+	} else {
+		close(fds[1]);
+		/* Avoid SIGPIPE when the command quits. */
+		signal(SIGPIPE, SIG_IGN);
+		/* initialize the rest of gdb on this handle */
+		return gdb_begin(fds[0]);
 	}
-	ZERO_OR_DIE(posix_spawn_file_actions_adddup2, &file_actions,
-		    STDOUT_FILENO, STDIN_FILENO);
-
-	/* Spawn the actual command. */
-	ZERO_OR_DIE(posix_spawn, &pid, sh, &file_actions, NULL, argv, environ);
-
-	/* Cleanup. */
-	ZERO_OR_DIE(posix_spawn_file_actions_destroy, &file_actions);
-
-	close(fds[1]);
-
-	/* Avoid SIGPIPE when the command quits. */
-	signal(SIGPIPE, SIG_IGN);
-
-	/* initialize the rest of gdb on this handle */
-	return gdb_begin(fds[0]);
+	return NULL;
 }
 
 struct gdb_conn *
@@ -303,6 +295,24 @@ gdb_end(struct gdb_conn *conn)
 	fclose(conn->in);
 	fclose(conn->out);
 	free(conn);
+}
+
+void
+gdb_set_non_stop(struct gdb_conn *conn, bool val)
+{
+	conn->non_stop = val;
+}
+
+bool
+gdb_has_non_stop(struct gdb_conn *conn)
+{
+	return conn->non_stop;
+}
+
+bool
+gdb_has_all_stop(struct gdb_conn *conn)
+{
+	return !conn->non_stop;
 }
 
 static void
@@ -395,8 +405,9 @@ push_notification(char *packet, size_t packet_size)
 {
 	int idx;
 
-	/* XXX signals, exec, fork, vfork, vforkdone, create? */
-	if (strncmp(packet+3, "syscall", 7) != 0)
+//	if (strncmp(packet+3, "syscall", 7) != 0 || strncmp(packet+3, "vfork", 5) != 0) /* TODO (1) "fixes" -f 2 */
+	if (strncmp(packet+3, "syscall", 7) != 0 && strncmp(packet+3, "vfork", 5) != 0 && packet[0] != 'W')
+//	if (strncmp(packet+3, "syscall", 7) != 0) /* TODO (2) fixes 1 / -f 1 */
 		return;
 
 	/* XXX
@@ -432,6 +443,25 @@ push_notification(char *packet, size_t packet_size)
 		  packet, notifications.count);
 }
 
+void
+dump_notifications()
+{
+	int idx;
+
+	if (!debug_flag)
+		return;
+	int start = notifications.start;
+	for (idx = 0; idx < notifications.count; idx++) {
+		int notify_idx = start + idx;
+		if (notify_idx >= notifications.size) {
+			start = 0;
+			notify_idx = idx;
+		}
+		if (notifications.packet[notify_idx] != NULL)
+			debug_msg ("Notify Dump: %s\n", notifications.packet[notify_idx]);
+	}
+}
+
 char*
 pop_notification(size_t *size)
 {
@@ -449,6 +479,7 @@ pop_notification(size_t *size)
 
 	debug_msg("Popped %s (%d items left in queue)\n",
 		  packet, notifications.count);
+	dump_notifications ();
 
 	return packet;
 }
@@ -458,18 +489,6 @@ have_notification(void)
 {
 	debug_msg("have_notification %d items\n", notifications.count);
 	return (notifications.count == 0 ? false : true);
-}
-
-/* XXX This one is not used currently */
-void
-dump_notifications(char *packet, int pid, int tid)
-{
-	int idx;
-
-	for (idx = notifications.start; idx < notifications.count; idx++) {
-		if (notifications.packet[idx] != NULL)
-			printf ("Notify Dump: %s\n", notifications.packet[idx]);
-	}
 }
 
 static char *
@@ -592,7 +611,7 @@ recv_packet(FILE *in, size_t *ret_size, bool* ret_sum_ok)
 	} else {
 		error_msg("unknown GDB server connection error");
 	}
-	// error_msg_and_die may result in endless loop doing cleanup
+	/* error_msg_and_die may result in endless loop doing cleanup */
 	_exit(1);
 }
 
@@ -605,8 +624,8 @@ gdb_recv(struct gdb_conn *conn, size_t *size, enum gdb_recv_type recv_type)
 	do {
 		bool want_ok_got_ok = false;
 		reply = recv_packet(conn->in, size, &acked);
-		const char *recv_type_str [] = {"want other", "want stop", "want ok"};
-		debug_msg ("gdb_recv %.32s %s\n",reply,recv_type_str[recv_type]);
+		const char *recv_type_str [] = {"Expected other", "Expected stop", "Expected ok"};
+		debug_msg ("gdb_recv Got %.32s %s\n",reply,recv_type_str[recv_type]);
 
 		/* We received an asynchronous non-stop notification
 		 * while expecting another packet.  Cache it for later
@@ -615,7 +634,8 @@ gdb_recv(struct gdb_conn *conn, size_t *size, enum gdb_recv_type recv_type)
 		 * the final OK terminating the notification sequence.
 		 */
 
-		if (recv_type != recv_want_stop && strncmp(reply, "T05syscall", 10) == 0) do {
+		if (gdb_has_non_stop(conn) && recv_type != recv_want_stop
+		    && (strncmp(reply, "T05", 3) == 0 || reply[0] == 'W')) do {
 			push_notification(reply, *size);
 			gdb_send(conn, "vStopped", 8);
 			reply = recv_packet(conn->in, size, &acked);
@@ -624,7 +644,7 @@ gdb_recv(struct gdb_conn *conn, size_t *size, enum gdb_recv_type recv_type)
 					want_ok_got_ok = true;
 				else {
 					reply = recv_packet(conn->in, size, &acked);
-					if (strncmp(reply, "T05syscall", 10) != 0)
+					if (strncmp(reply, "T05", 3) != 0)
 						break;
 				}
 			}
@@ -656,18 +676,6 @@ gdb_start_noack(struct gdb_conn *conn)
 	if (ok)
 		conn->ack = false;
 	return ok ? "OK" : "";
-}
-
-void
-gdb_set_non_stop(struct gdb_conn *conn, bool val)
-{
-	conn->non_stop = val;
-}
-
-bool
-gdb_has_non_stop(struct gdb_conn *conn)
-{
-	return conn->non_stop;
 }
 
 /**

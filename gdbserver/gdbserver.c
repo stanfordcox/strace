@@ -108,8 +108,8 @@ struct gdb_stop_reply {
 
 	enum gdb_stop type;
 	int code; /* error, signal, exit status, scno */
-	int pid; /* process id, aka kernel tgid */
-	int tid; /* thread id, aka kernel tid */
+	pid_t pid; /* process id, aka kernel tgid */
+	pid_t tid; /* thread id, aka kernel tid */
 };
 
 /* TODO Same as strace.c */
@@ -226,13 +226,14 @@ gdb_recv_signal(struct gdb_stop_reply *stop)
 			stop->code == GDB_SIGNAL_0)
 		? GDB_STOP_TRAP : GDB_STOP_SIGNAL;
 
-	debug_msg("\t%s %s", __FUNCTION__, reply); // scox
+	debug_msg("\t%s %s", __FUNCTION__, reply);
 	/* tokenize the n:r pairs */
 	char *info = strdupa(reply + 3);
 	char *savetok = NULL, *nr;
 
 	for (nr = strtok_r(info, ";", &savetok); nr;
 	    nr = strtok_r(NULL, ";", &savetok)) {
+		int pid, tid;
 		char *n = strtok(nr, ":");
 		char *r = strtok(NULL, "");
 
@@ -240,9 +241,9 @@ gdb_recv_signal(struct gdb_stop_reply *stop)
 			continue;
 
 		if (!strcmp(n, "thread")) {
-			int pid, tid;
 			gdb_parse_thread(r, &pid, &tid);
-			if (pid != gdb_w0_pid) {
+			if (pid != gdb_w0_pid 
+			    && (/*!gdb_nonstop || */stop->type != GDB_STOP_VFORK)) {
 				general_pid = stop->pid = pid;
 				general_tid = stop->tid = tid;
 			}
@@ -250,36 +251,38 @@ gdb_recv_signal(struct gdb_stop_reply *stop)
 			if (stop->type == GDB_STOP_TRAP) {
 				stop->type = GDB_STOP_SYSCALL_ENTRY;
 				stop->code = gdb_decode_hex_str(r);
-				debug_msg("\t%s syscall_entry %d", __FUNCTION__, stop->code); // scox
+				debug_msg("\t%s syscall_entry %d", __FUNCTION__, stop->code);
 			}
 		} else if (!strcmp(n, "syscall_return")) {
 			if (stop->type == GDB_STOP_TRAP) {
 				stop->type = GDB_STOP_SYSCALL_RETURN;
 				stop->code = gdb_decode_hex_str(r);
-				debug_msg("\t%s syscall_return %d", __FUNCTION__, stop->code); // scox
+				debug_msg("\t%s syscall_return %d", __FUNCTION__, stop->code);
 			}
 		} else if (!strcmp(n, "fork")) {
 			if (stop->type == GDB_STOP_TRAP) {
 				stop->type = GDB_STOP_FORK;
-				strtok(r, ".");
-				stop->code = gdb_decode_hex_str(strtok(NULL, ""));
+				gdb_parse_thread(r, &pid, &tid);
+				if (pid != gdb_w0_pid) {
+					general_pid = stop->pid = pid;
+					general_tid = stop->tid = tid;
+				}
 			}
 		} else if (!strcmp(n, "vfork")) {
 			if (stop->type == GDB_STOP_TRAP) {
 				stop->type = GDB_STOP_VFORK;
-/*				strtok(r, ".");
- *				 stop->code = gdb_decode_hex_str(strtok(NULL, "")); */
-				stop->code = gdb_decode_hex_str(r);
+				gdb_parse_thread(r, &pid, &tid);
+				if (pid != gdb_w0_pid) {
+					general_pid = stop->pid = pid;
+					general_tid = stop->tid = tid;
+				}
 			}
 		} else if (!strcmp(n, "vforkdone")) {
 			if (stop->type == GDB_STOP_TRAP) {
 				stop->type = GDB_STOP_VFORKDONE;
-				stop->code = gdb_decode_hex_str(r);
 			}
 		} else if (!strcmp(n, "exec")) {
 			}
-
-		/* TODO exec, fork, vfork, vforkdone */
 	}
 
 	/* TODO guess architecture by the size of reported registers? */
@@ -501,9 +504,6 @@ gdb_init_syscalls(void)
 	bool want_syscall_set = false;
 	unsigned sci;
 
-	/* TODO Improve non-stop futex handling */
-//	qualify ("trace=!futex");
-
 	/* Only send syscall list if a filtered list was given with -e */
 	for (sci = 0; sci < nsyscalls; sci++)
 		if (! (qual_flags(sci) & QUAL_TRACE)) {
@@ -511,6 +511,13 @@ gdb_init_syscalls(void)
 			break;
 		}
 
+	/* TODO Improve non-stop futex handling */
+#if 0 /* TODO 1 fixes 1 / -f 1 except  0 "fixes" -f 2 */
+	if (!want_syscall_set) {
+		qualify ("trace=!futex");
+		want_syscall_set = true;
+	}
+#endif
 	for (sci = 0; want_syscall_set && sci < nsyscalls; sci++)
 		if (qual_flags(sci) & QUAL_TRACE)
 			if (asprintf((char **) &syscall_set, "%s;%x",
@@ -652,6 +659,11 @@ gdb_startup_child(char **argv)
 	size_t i;
 	size_t size = 4; /*vRun */
 
+	/* Get the realpath of the program path argument */
+	char real_argv0[PATH_MAX];
+	realpath(argv[0], real_argv0);
+	argv[0] = real_argv0;
+
 	for (i = 0; argv[i]; ++i) {
 		size += 1 + 2 * strlen(argv[i]); /*;hexified-argument */
 	}
@@ -686,8 +698,8 @@ gdb_startup_child(char **argv)
 
 	switch (stop.type) {
 	case GDB_STOP_ERROR:
-		error_msg_and_die("GDB server failed vRun with %.*s",
-				(int)stop.size, stop.reply);
+		error_msg_and_die("GDB server failed vRun of %s with %.*s",
+				argv[0], (int)stop.size, stop.reply);
 	case GDB_STOP_TRAP:
 		break;
 	default:
@@ -864,8 +876,7 @@ gdb_detach(struct tcb *tcp)
 static const char *trace_event_str [] = {"BREAK", "NEXT", "RESTART", "SYSCALL STOP", "SIGNAL DELIVERY STOP", "SIGNALLED", "GROUP STOP", "EXITED", "STOP BEFORE EXECVE", "STOP BEFORE EXIT" };
 #define GDB_NEXT_EVENT_RETURN(wd) \
 	do {			  \
-	debug_msg("\tDispatching %s trace event", trace_event_str[wd->te]); \
-	debug_msg("\t%d", stop.code); \
+	debug_msg("\tDispatching %s trace event\tcode=%d", trace_event_str[wd->te], stop.code); \
 	return wd;							\
 	} while (0)
 
@@ -886,7 +897,8 @@ gdb_next_event(void)
 	}
 
 	/* If we previously received a process exit reply then exit strace dispatch */
-	if (stop.reply && stop.reply[0] == 'W' && wd->te == TE_EXITED) {
+	if (stop.reply && stop.reply[0] == 'W' && wd->te == TE_EXITED /*&& stop.pid == gdb_group_pid*/) {
+		debug_msg("%s exiting %x", __FUNCTION__, stop.pid);
 		wd->te = TE_BREAK;
 		GDB_NEXT_EVENT_RETURN (wd);
 	}
@@ -904,7 +916,7 @@ gdb_next_event(void)
 		if (process) {
 			gdb_w0_pid = gdb_decode_hex_str(process +
 						       sizeof(process_needle) - 1);
-			if (gdb_w0_pid == gdb_group_pid) {
+			/*if (gdb_w0_pid == gdb_group_pid)*/ {
 				wd->status = W_EXITCODE (gdb_signal_to_target(current_tcp, gdb_sig), 0);
 				wd->te = TE_EXITED;
 				GDB_NEXT_EVENT_RETURN (wd);
@@ -991,7 +1003,7 @@ gdb_next_event(void)
 		 * much good.  Might as well force it to be a new
 		 * entry regardless to sync up. */
 
-		debug_msg("\t%s GDB_STOP_SYSCALL_ENTRY %d", __FUNCTION__, stop.code); // scox
+		debug_msg("\t%s GDB_STOP_SYSCALL_ENTRY %d", __FUNCTION__, stop.code);
 		tcp->scno = stop.code;
 		gdb_sig = stop.code;
 		wd->status = gdb_signal_to_target(tcp, gdb_sig);
@@ -1019,7 +1031,7 @@ gdb_next_event(void)
 		/* If we missed the entry, recording a return will
 		 * only confuse things, so let's just report the good
 		 * ones. */
-		debug_msg("\t%s GDB_STOP_SYSCALL_RETURN %d", __FUNCTION__, stop.code); // scox
+		debug_msg("\t%s GDB_STOP_SYSCALL_RETURN %d", __FUNCTION__, stop.code);
 		if (exiting(tcp)) {
 			tcp->scno = stop.code;
 			gdb_sig = stop.code;
@@ -1068,13 +1080,13 @@ gdb_next_event(void)
 	}
 	case GDB_STOP_FORK:
 	{
-		gdb_find_thread(stop.code, false, true);
+		gdb_find_thread(stop.pid, false, true);
 		break;
 	}
 
 	case GDB_STOP_VFORK:
 	{
-		gdb_find_thread(stop.code, false, true);
+		gdb_find_thread(stop.pid, false, true);
 		break;
 	}
 
@@ -1291,7 +1303,7 @@ bool
 gdb_restart_process(struct tcb *current_tcp, unsigned int restart_sig,
 		       void *data)
 {
-	debug_msg("\n%s %s %d\n",__FUNCTION__,stop.reply,stop.code);
+	debug_msg("%s after %-.32s... code=%d\n",__FUNCTION__,stop.reply,stop.code);
 	/* gdb_restart_process <- restart_process <- dispatch_event (next_event) <- main */
 	int gdb_sig = 0 /*stop.code*/;
 	pid_t tid = current_tcp ? current_tcp->pid : 0;
@@ -1319,10 +1331,16 @@ gdb_restart_process(struct tcb *current_tcp, unsigned int restart_sig,
 			 * pid.tid is the thread gdbserver is focused
 			 * on */
 			char cmd[] = "vCont;c:xxxxxxxx.xxxxxxxx";
-
-			debug_msg("current_tcp %d general_pid %d general_tid %d gdb_group_pid %d gdb_exit_group_pid %d gdb_w0_pid %d\n",
-					current_tcp ? current_tcp->pid : 0, general_pid, general_tid, gdb_group_pid, gdb_exit_group_pid, gdb_w0_pid);
-			if (gdb_has_non_stop(gdb) && thread_count) {
+			pid_t this_current_pid = current_tcp ? current_tcp->pid : 0;
+			debug_msg("current %x/%d general %x.%x/%d.%d group %x/%d exit group %x/%d w0 %x/%d\n",
+					this_current_pid, this_current_pid, general_pid, general_tid, general_pid, general_tid,
+					gdb_group_pid, gdb_group_pid, gdb_exit_group_pid, gdb_exit_group_pid, gdb_w0_pid, gdb_w0_pid);
+			if (stop.type == GDB_STOP_VFORK /*&& gdb_has_non_stop(gdb)*/)
+				snprintf(cmd, sizeof(cmd), "vCont;c:p%x.%x",
+						general_pid, general_tid);
+			else if (gdb_has_non_stop(gdb) && thread_count    /* we have threads */
+					&& general_pid != gdb_w0_pid) /* current thread has not exited */
+					/*&& stop.code != __NR_futex)*/  /* syscall was not a futex */ {
 				if (gdb_exit_pid == general_tid)
 					/* Selected thread exited so pick another */
 					snprintf(cmd, sizeof(cmd), "vCont;c:p%x.0",
@@ -1336,6 +1354,8 @@ gdb_restart_process(struct tcb *current_tcp, unsigned int restart_sig,
  							gdb_group_pid, gdb_group_pid);
  				else
  					snprintf(cmd, sizeof(cmd), "vCont;c:p%x.-1", gdb_group_pid);
+			} else if (gdb_has_all_stop(gdb) && general_pid != gdb_group_pid) {
+				snprintf(cmd, sizeof(cmd), "vCont;c:p%x.0",general_pid);
  			} else
 				snprintf(cmd, sizeof(cmd), "vCont;c");
 
