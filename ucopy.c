@@ -17,6 +17,9 @@
 
 #include "scno.h"
 #include "ptrace.h"
+#ifdef ENABLE_GDBSERVER
+#include "gdbserver.h"
+#endif
 
 static bool process_vm_readv_not_supported;
 
@@ -243,6 +246,10 @@ int
 umoven(struct tcb *const tcp, kernel_ulong_t addr, unsigned int len,
        void *const our_addr)
 {
+#ifdef ENABLE_GDBSERVER
+	if (__builtin_expect(gdbserver != NULL, 0))
+		return gdb_umoven(tcp, addr, len, our_addr);
+#endif
 	if (tracee_addr_is_invalid(addr))
 		return -1;
 
@@ -350,6 +357,10 @@ int
 umovestr(struct tcb *const tcp, kernel_ulong_t addr, unsigned int len,
 	 char *laddr)
 {
+#ifdef ENABLE_GDBSERVER
+	if (__builtin_expect(gdbserver != NULL, 0))
+		return gdb_umovestr(tcp, addr, len, laddr);
+#endif
 	if (tracee_addr_is_invalid(addr))
 		return -1;
 

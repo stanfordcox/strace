@@ -9,10 +9,17 @@
 #include "defs.h"
 #include "ptrace.h"
 #include "ptrace_pokeuser.c"
+#ifdef ENABLE_GDBSERVER
+#include "gdbserver.h"
+#endif
 
 int
 upoke(struct tcb *tcp, unsigned long off, kernel_ulong_t val)
 {
+#ifdef ENABLE_GDBSERVER
+	if (__builtin_expect(gdbserver != NULL, 0))
+		return gdb_upoke(tcp, off, val);
+#endif
 	if (ptrace_pokeuser(tcp->pid, off, val) < 0) {
 		if (errno != ESRCH)
 			perror_func_msg("PTRACE_POKEUSER pid:%d @%#lx)",

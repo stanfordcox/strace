@@ -23,6 +23,9 @@
 #include "delay.h"
 #include "retval.h"
 #include <limits.h>
+#ifdef ENABLE_GDBSERVER
+#include "gdbserver.h"
+#endif
 
 /* for struct iovec */
 #include <sys/uio.h>
@@ -256,7 +259,7 @@ set_personality(unsigned int personality)
 # endif
 }
 
-static void
+void
 update_personality(struct tcb *tcp, unsigned int personality)
 {
 	static bool need_mpers_warning[] =
@@ -1140,9 +1143,26 @@ clear_regs(struct tcb *tcp)
 	get_regs_error = -1;
 }
 
+#ifdef ENABLE_GDBSERVER
+struct iovec*
+arch_iovec_for_getregset(void)
+{
+#ifdef ARCH_IOVEC_FOR_GETREGSET
+	return (struct iovec*)&ARCH_IOVEC_FOR_GETREGSET;
+#else
+	return NULL;
+#endif
+}
+#endif
+
 static long
 get_regs(struct tcb *const tcp)
 {
+#ifdef ENABLE_GDBSERVER
+	if (__builtin_expect (gdbserver != NULL, 0))
+		return gdb_get_registers(tcp);
+#endif
+
 #ifdef ptrace_getregset_or_getregs
 
 	if (get_regs_error != -1)

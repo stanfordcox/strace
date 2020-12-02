@@ -40,7 +40,9 @@
 #include "xstring.h"
 #include "delay.h"
 #include "wait.h"
-
+#ifdef ENABLE_GDBSERVER
+#include "gdbserver.h"
+#endif
 /* In some libc, these aren't declared. Do it ourself: */
 extern char **environ;
 extern int optind;
@@ -136,10 +138,10 @@ static int post_attach_sigstop = TCB_IGNORE_ONE_SIGSTOP;
 
 unsigned int pidns_translation;
 
-static bool detach_on_execve;
+bool detach_on_execve;
 
 static int exit_code;
-static int strace_child;
+int strace_child;
 static int strace_tracer_pid;
 
 static const char *username;
@@ -159,7 +161,7 @@ static FILE *shared_log;
 static bool open_append;
 
 struct tcb *printing_tcp;
-static struct tcb *current_tcp;
+struct tcb *current_tcp;
 
 struct tcb_wait_data {
 	enum trace_event te; /**< Event passed to dispatch_event() */
@@ -302,8 +304,12 @@ Tracing:\n\
      2, waiting:    fatal signals are blocked while decoding syscall (default)\n\
      3, never:      fatal signals are always blocked (default if '-o FILE PROG')\n\
      4, never_tstp: fatal signals and SIGTSTP (^Z) are always blocked\n\
-                    (useful to make 'strace -o FILE PROG' not stop on ^Z)\n\
-\n\
+                    (useful to make 'strace -o FILE PROG' not stop on ^Z)\n"
+#ifdef ENABLE_GDBSERVER
+"  -G <comm>, --gdbserver=<comm>\n\
+                 trace child processes using gdbserver via <comm>\n"
+#endif
+"\n\
 Filtering:\n\
   -e trace=[!]{[?]SYSCALL[@64|@32|@x32]|[?]/REGEX|GROUP|all|none},\n\
   --trace=[!]{[?]SYSCALL[@64|@32|@x32]|[?]/REGEX|GROUP|all|none}\n\
@@ -834,7 +840,7 @@ tabto(void)
  * Otherwise, "strace -oFILE -ff -p<nonexistant_pid>"
  * may create bogus empty FILE.<nonexistant_pid>, and then die.
  */
-static void
+void
 after_successful_attach(struct tcb *tcp, const unsigned int flags)
 {
 	tcp->flags |= TCB_ATTACHED | TCB_STARTUP | flags;
@@ -873,7 +879,7 @@ expand_tcbtab(void)
 		*tcb_ptr = newtcbs;
 }
 
-static struct tcb *
+struct tcb *
 alloctcb(int pid)
 {
 	unsigned int i;
@@ -931,7 +937,7 @@ free_tcb_priv_data(struct tcb *tcp)
 	}
 }
 
-static void
+void
 droptcb(struct tcb *tcp)
 {
 	if (tcp->pid == 0)
@@ -1004,6 +1010,13 @@ detach(struct tcb *tcp)
 {
 	int error;
 	int status;
+
+#ifdef ENABLE_GDBSERVER
+	if (gdbserver) {
+		gdb_detach(tcp);
+		goto drop;
+	}
+#endif
 
 	/*
 	 * Linux wrongly insists the child be stopped
@@ -1299,6 +1312,12 @@ startup_attach(void)
 		if (tcp->flags & TCB_ATTACHED)
 			continue; /* no, we already attached it */
 
+#ifdef ENABLE_GDBSERVER
+		if (gdbserver) {
+			gdb_attach_tcb(tcp);
+		}
+#endif
+
 		if (tcp->pid == parent_pid || tcp->pid == strace_tracer_pid) {
 			errno = EPERM;
 			perror_msg("attach: pid %d", tcp->pid);
@@ -1470,6 +1489,14 @@ startup_child(char **argv, char **env)
 	char pathname[PATH_MAX];
 	int pid;
 	struct tcb *tcp;
+
+
+#ifdef ENABLE_GDBSERVER
+	if (gdbserver) {
+		gdb_startup_child(argv);
+		return;
+	}
+#endif
 
 	filename = argv[0];
 	filename_len = strlen(filename);
@@ -1727,7 +1754,7 @@ get_os_release(void)
 	return rel;
 }
 
-static void
+void
 set_sighandler(int signo, void (*sighandler)(int), struct sigaction *oldact)
 {
 	const struct sigaction sa = { .sa_handler = sighandler };
@@ -2023,7 +2050,11 @@ init(int argc, char *argv[])
 	qualify_signals("all");
 
 	static const char optstring[] =
-		"+a:Ab:cCdDe:E:fFhiI:kno:O:p:P:qrs:S:tTu:U:vVwxX:yzZ";
+		"+a:Ab:cCdDe:E:fF"
+#ifdef ENABLE_GDBSERVER
+		"G:"
+#endif
+		"hiI:kno:O:p:P:qrs:S:tTu:U:vVwxX:yzZ";
 
 	enum {
 		GETOPT_SECCOMP = 0x100,
@@ -2060,6 +2091,9 @@ init(int argc, char *argv[])
 		{ "daemonized",		optional_argument, 0, GETOPT_DAEMONIZE },
 		{ "env",		required_argument, 0, 'E' },
 		{ "follow-forks",	no_argument,	   0, GETOPT_FOLLOWFORKS },
+#ifdef ENABLE_GDBSERVER
+		{ "gdbserver",		required_argument, 0, 'G' },
+#endif
 		{ "output-separately",	no_argument,	   0,
 			GETOPT_OUTPUT_SEPARATELY },
 		{ "help",		no_argument,	   0, 'h' },
@@ -2357,10 +2391,19 @@ init(int argc, char *argv[])
 			qualify_decode_fd(optarg ?: yflag_qual);
 			break;
 		default:
+#ifdef ENABLE_GDBSERVER
+			if (! gdb_handle_arg(c, optarg))
+#endif
 			error_msg_and_help(NULL);
 			break;
 		}
 	}
+
+#ifdef ENABLE_GDBSERVER
+	/* gdbserver always follows the fork */
+	if (gdbserver)
+		followfork_short++;
+#endif
 
 	argv += optind;
 	argc -= optind;
@@ -2618,6 +2661,11 @@ init(int argc, char *argv[])
 	 * no		1	1	INTR_WHILE_WAIT
 	 */
 
+#ifdef ENABLE_GDBSERVER
+	if (gdbserver)
+		gdb_start_init(argc, argv);
+#endif
+
 	if (daemonized_tracer && !opt_intr)
 		opt_intr = INTR_BLOCK_TSTP_TOO;
 	if (outfname && argc) {
@@ -2687,6 +2735,11 @@ init(int argc, char *argv[])
 	if (nprocs != 0 || daemonized_tracer)
 		startup_attach();
 
+#ifdef ENABLE_GDBSERVER
+	if (gdbserver)
+		gdb_end_init();
+#endif
+
 	/* Do we want pids printed in our -o OUTFILE?
 	 * -ff: no (every pid has its own file); or
 	 * -f: yes (there can be more pids in the future); or
@@ -2696,7 +2749,7 @@ init(int argc, char *argv[])
 		((followfork && !output_separately) || nprocs > 1);
 }
 
-static struct tcb *
+struct tcb *
 pid2tcb(const int pid)
 {
 	if (pid <= 0)
@@ -2741,6 +2794,10 @@ cleanup(int fatal_sig)
 		}
 		detach(tcp);
 	}
+
+#ifdef ENABLE_GDBSERVER
+	gdb_cleanup(fatal_sig);
+#endif
 }
 
 static void
@@ -3085,6 +3142,11 @@ tcb_wait_tab_check_size(const size_t size)
 static const struct tcb_wait_data *
 next_event(void)
 {
+#ifdef ENABLE_GDBSERVER
+	if (__builtin_expect(gdbserver != NULL, 0))
+		return gdb_next_event();
+#endif
+
 	if (interrupted)
 		return NULL;
 
@@ -3367,7 +3429,7 @@ next_event_exit:
 	return tcb_wait_tab + tcp->wait_data_idx;
 }
 
-static int
+int
 trace_syscall(struct tcb *tcp, unsigned int *sig)
 {
 	if (entering(tcp)) {
@@ -3581,6 +3643,14 @@ dispatch_event(const struct tcb_wait_data *wd)
 		return true;
 	}
 
+#ifdef ENABLE_GDBSERVER
+	if (__builtin_expect(gdbserver != NULL, 0)) {
+		if (gdb_restart_process(restart_op, current_tcp, restart_sig) < 0) {
+			exit_code = 1;
+			return false;
+		}
+	} else
+#endif
 	if (ptrace_restart(restart_op, current_tcp, restart_sig) < 0) {
 		/* Note: ptrace_restart emitted error message */
 		exit_code = 1;

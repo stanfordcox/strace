@@ -36,6 +36,12 @@ AM_CPPFLAGS = -I$(builddir)/$(OS)/$(ARCH) \
 	      -I$(builddir) \
 	      -I$(srcdir)
 
+if ENABLE_GDBSERVER
+AM_CPPFLAGS += -I$(builddir)/gdbserver/$(ARCH) \
+	      -I$(srcdir)/gdbserver/$(ARCH) \
+	      -I$(builddir)/gdbserver \
+	      -I$(srcdir)/gdbserver
+endif
 AM_CFLAGS_FOR_BUILD = $(WARN_CFLAGS_FOR_BUILD)
 AM_CPPFLAGS_FOR_BUILD = $(AM_CPPFLAGS)
 
@@ -386,6 +392,11 @@ libstrace_a_SOURCES =	\
 
 strace_SOURCES_check = bpf_attr_check.c $(TYPES_CHECK_FILES)
 
+if ENABLE_GDBSERVER
+strace_SOURCES +=		\
+	gdbserver/gdbserver.c	\
+	gdbserver/protocol.c
+endif
 if ENABLE_STACKTRACE
 libstrace_a_SOURCES += unwind.c unwind.h
 if USE_LIBDW

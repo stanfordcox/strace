@@ -455,6 +455,20 @@ not stop on
 default if
 .BR \-D ).
 .RE
+.if '@ENABLE_GDBSERVER_FALSE@'#' \{\
+.TP
+.B \-G <comm>
+.TQ
+.BR \-\-gdbserver = \fI<comm>\fR
+Trace child processes using the GNU Debugger Remote Server
+(see (\fBgdbserver\fR(1)).
+.B strace
+communicates with
+.B gdbserver
+via \fI<comm>\fR.  To use a TCP connection, you
+could say: host:2345 to connect to a gdbserver on port 2345 of host,
+or :2345 to connect to a gdbsrver on local port 2345.
+.\}
 .SS Filtering
 .TP 12
 \fB\-e\ trace\fR=\,\fIsyscall_set\fR

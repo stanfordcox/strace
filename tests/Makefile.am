@@ -265,6 +265,10 @@ check_PROGRAMS = $(PURE_EXECUTABLES) \
 	xet_robust_list--pidns-translation \
 	zeroargc \
 	# end of check_PROGRAMS
+if ENABLE_GDBSERVER
+check_PROGRAMS += gdbrsp
+endif
+
 
 attach_f_p_LDADD = -lpthread $(LDADD)
 count_f_LDADD = -lpthread $(LDADD)
@@ -413,8 +417,10 @@ DECODER_TESTS = \
 	uname.test \
 	unix-pair-send-recv.test \
 	unix-pair-sendto-recvfrom.test \
-	xet_thread_area_x86.test \
-	# end of DECODER_TESTS
+	xet_thread_area_x86.test
+if ENABLE_GDBSERVER
+DECODER_TESTS += gdbrsp.test
+endif   # end of DECODER_TESTS
 
 MISC_TESTS = \
 	attach-f-p.test \

@@ -14,12 +14,19 @@
 
 #include "defs.h"
 #include "ptrace.h"
+#ifdef ENABLE_GDBSERVER
+#include "gdbserver.h"
+#endif
 
 int
 upeek(struct tcb *tcp, unsigned long off, kernel_ulong_t *res)
 {
 	long val;
 
+#ifdef ENABLE_GDBSERVER
+	if (__builtin_expect(gdbserver != NULL, 0))
+		return gdb_upeek(tcp, off, res);
+#endif
 	errno = 0;
 	val = ptrace(PTRACE_PEEKUSER, (pid_t) tcp->pid, (void *) off, 0);
 	if (val == -1 && errno) {

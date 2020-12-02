@@ -764,6 +764,29 @@ AC_CHECK_TOOL([READELF], [readelf])
 
 st_STACKTRACE
 
+dnl gdbserver
+AC_ARG_ENABLE([gdbserver],
+              [AS_HELP_STRING([--enable-gdbserver],
+                              [enable gdbserver backend (includes GPLv3 code)])],
+              [], [enable_gdbserver=check])
+
+use_gdbserver=no
+AS_IF([test "x$enable_gdbserver" != xno],
+        [AC_CHECK_FILE([$srcdir/gdbserver/$arch/gdb_arch_defs.h],
+                [use_gdbserver=yes],
+                [if test "x$enable_gdbserver" != xcheck; then
+                  AC_MSG_FAILURE([failed to find arch-specific gdbserver definitions $srcdir/gdbserver/$arch/gdb_arch_defs.h])
+                fi])]
+)
+
+AC_MSG_CHECKING([whether to enable gdbserver backend support])
+if test "x$use_gdbserver" = xyes; then
+        AC_DEFINE([ENABLE_GDBSERVER], 1, [Enable gdbserver backend support])
+#        m4_define([additional_tracing_backends], [1])
+fi
+AM_CONDITIONAL([ENABLE_GDBSERVER], [test "x$use_gdbserver" = xyes])
+AC_MSG_RESULT([$use_gdbserver])
+
 if test "$arch" = mips && test "$no_create" != yes; then
 	mkdir -p linux/mips
 	if $srcdir/linux/mips/genstub.sh \
